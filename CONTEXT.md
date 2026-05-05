@@ -36,3 +36,8 @@ where their manifests live.
 
 The machine-readable contract for a single ability. It defines identity, type,
 runtime, environment requirements, and lifecycle commands.
+
+### Database page
+
+The canonical term for a record in a Notion database. Historical references to
+"item" in this repo map to this term.

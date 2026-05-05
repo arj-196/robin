@@ -72,7 +72,13 @@ cp .env.example .env
 
 ## Sample Abilities
 
-- `notion`: a Python connector stub that demonstrates a manifest-driven
-  external integration.
+- `notion`: a Python connector with JSON-over-stdin `invoke` actions for Notion
+  database pages, including listing pages from a database and updating a
+  specific page property by `property_id`.
 - `dashboard`: a TypeScript app stub that exposes a minimal HTTP dashboard and
   CLI invocation surface.
+
+## Notion Terminology
+
+In this repository, a row/record in a Notion database is called a
+**database page**. Older references to "item" map to the same concept.
