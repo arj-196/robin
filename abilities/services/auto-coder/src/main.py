@@ -512,8 +512,6 @@ def build_codex_command(repo: Path, model: str) -> list[str]:
         str(repo),
         "--model",
         model,
-        "--ask-for-approval",
-        "never",
         "--sandbox",
         "workspace-write",
     ]

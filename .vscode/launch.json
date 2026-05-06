@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Auto Coder: run",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/abilities/services/auto-coder/src/main.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "args": ["run"],
+      "justMyCode": false
+    },
+    {
+      "name": "Auto Coder: status",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/abilities/services/auto-coder/src/main.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.env",
+      "args": ["status"],
+      "justMyCode": false
+    }
+  ]
+}
