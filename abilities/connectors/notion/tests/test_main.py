@@ -255,9 +255,18 @@ class NotionAbilityTests(unittest.TestCase):
         with self.assertRaises(main.InvalidRequestError):
             main.build_option_property_value("update_page_property", "multi_select", [])
 
-    def test_build_option_property_value_text_requires_non_empty_text(self) -> None:
+    def test_build_option_property_value_text_requires_text_argument(self) -> None:
         with self.assertRaises(main.InvalidRequestError):
             main.build_option_property_value("update_page_property", "rich_text", [], text=None)
+
+    def test_build_option_property_value_text_allows_explicit_empty_for_clear(self) -> None:
+        value = main.build_option_property_value("update_page_property", "rich_text", [], text="")
+        self.assertEqual(value, {"rich_text": []})
+
+        value_alias = main.build_option_property_value("update_page_property", "text", [], text="")
+        self.assertEqual(value_alias, {"rich_text": []})
+
+    def test_build_option_property_value_text_rejects_whitespace_only(self) -> None:
         with self.assertRaises(main.InvalidRequestError):
             main.build_option_property_value("update_page_property", "text", [], text="  ")
 
@@ -615,7 +624,47 @@ class NotionAbilityTests(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         payload = json.loads(result.stdout)
         self.assertFalse(payload["ok"])
-        self.assertIn("requires a non-empty '--text' value", payload["error"]["message"])
+        self.assertIn("requires '--text'", payload["error"]["message"])
+
+    @patch("abilities.connectors.notion.src.main.notion_request")
+    def test_update_page_property_cli_allows_empty_text_to_clear(self, mock_notion_request) -> None:
+        mock_notion_request.return_value = {
+            "id": "page-1",
+            "last_edited_time": "2026-05-05T13:00:00.000Z",
+            "properties": {
+                "error-log-id": {
+                    "rich_text": [],
+                }
+            },
+        }
+
+        with patch.dict("os.environ", {"NOTION_API_KEY": "secret_test_token"}, clear=True):
+            result = self.runner.invoke(
+                main.app,
+                [
+                    "update-page-property",
+                    "--page-id",
+                    "page-1",
+                    "--property-id",
+                    "error-log-id",
+                    "--property-type",
+                    "rich_text",
+                    "--text",
+                    "",
+                    "--json",
+                ],
+            )
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["page_id"], "page-1")
+        mock_notion_request.assert_called_once_with(
+            "PATCH",
+            "/pages/page-1",
+            "secret_test_token",
+            {"properties": {"error-log-id": {"rich_text": []}}},
+        )
 
     def test_update_page_property_cli_rejects_mixed_text_and_value_id(self) -> None:
         with patch.dict("os.environ", {"NOTION_API_KEY": "secret_test_token"}, clear=True):

@@ -25,7 +25,7 @@ class AutoCoderTests(unittest.TestCase):
             apps_root=Path("/tmp/apps").resolve(),
             status_property="Status",
             project_property="Project",
-            failure_property="Failure",
+            error_log_property="Error Log",
             codex_model="gpt-5.3-codex",
             git_completion_mode="auto_merge_main",
         )
@@ -46,12 +46,7 @@ class AutoCoderTests(unittest.TestCase):
                         ],
                     },
                     {"name": "Project", "property_id": "project-id", "type": "select", "options": []},
-                    {
-                        "name": "Failure",
-                        "property_id": "failure-id",
-                        "type": "select",
-                        "options": [{"id": code, "name": code} for code in main.FAILURE_CODES],
-                    },
+                    {"name": "Error Log", "property_id": "error-log-id", "type": "rich_text", "options": []},
                 ]
             }
         }
@@ -59,7 +54,7 @@ class AutoCoderTests(unittest.TestCase):
     def test_discover_schema_binds_required_options(self) -> None:
         bindings = main.discover_schema(self.schema_payload(), self.config())
         self.assertEqual(bindings.status.options_by_name["To do"], "todo-id")
-        self.assertEqual(bindings.failure.options_by_name["codex_failure"], "codex_failure")
+        self.assertEqual(bindings.error_log.property_id, "error-log-id")
 
     def test_select_todo_page_returns_first_todo(self) -> None:
         bindings = main.discover_schema(self.schema_payload(), self.config())
@@ -174,20 +169,6 @@ class AutoCoderTests(unittest.TestCase):
         self.assertEqual(payload["event"], "run_completed")
         self.assertEqual(payload["result"], "no_task")
 
-    def test_failure_option_fallback_emits_json_error(self) -> None:
-        binding = main.PropertyBinding(
-            name="Failure",
-            property_id="failure-id",
-            property_type="select",
-            options_by_name={"out_of_scope": "fallback-id"},
-        )
-        with patch("typer.echo") as echo:
-            option_id = main.choose_failure_option(binding, "codex_failure")
-        self.assertEqual(option_id, "fallback-id")
-        payload = json.loads(echo.call_args.args[0])
-        self.assertEqual(payload["event"], "failure_code_fallback")
-        self.assertEqual(payload["desired_code"], "codex_failure")
-
     def test_status_payload_reports_missing_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             config = main.Config(
@@ -195,7 +176,7 @@ class AutoCoderTests(unittest.TestCase):
                 apps_root=Path(tmp),
                 status_property="Status",
                 project_property="Project",
-                failure_property="Failure",
+                error_log_property="Error Log",
                 codex_model="gpt-5.3-codex",
                 git_completion_mode="auto_merge_main",
             )

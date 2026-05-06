@@ -22,7 +22,7 @@ Optional field-name configuration:
 
 - `AUTO_CODER_STATUS_PROPERTY`, defaults to `Status`
 - `AUTO_CODER_PROJECT_PROPERTY`, defaults to `Project`
-- `AUTO_CODER_FAILURE_PROPERTY`, defaults to `Failure`
+- `AUTO_CODER_ERROR_LOG_PROPERTY`, defaults to `Error Log`
 - `AUTO_CODER_CODEX_MODEL`, defaults to `gpt-5.3-codex`
 - `AUTO_CODER_GIT_COMPLETION_MODE`, defaults to `auto_merge_main`
 

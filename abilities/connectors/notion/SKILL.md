@@ -162,6 +162,12 @@ Command:
   --property-type <rich_text|text> \
   --text "<message>"
 
+./bin/notion update-page-property \
+  --page-id <page-id> \
+  --property-id <property-id> \
+  --property-type <rich_text|text> \
+  --text ""
+
 ./bin/notion update-page-property ... --json
 ```
 
@@ -169,7 +175,7 @@ Rules:
 - `--property-type` is mandatory.
 - `status` and `select` require exactly one `--value-id` and reject `--text`.
 - `multi_select` requires one or more `--value-id` and rejects `--text`.
-- `rich_text` and `text` require non-empty `--text` and reject `--value-id`.
+- `rich_text` and `text` require `--text`, reject `--value-id`, allow `--text ""` to clear, and reject whitespace-only text like `"   "`.
 
 JSON shape:
 

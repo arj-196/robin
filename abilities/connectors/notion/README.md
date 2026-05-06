@@ -37,6 +37,16 @@ NOTION_PARENT_PAGE_ID=optional-legacy-value
 
 If `bin/` is on your `PATH`, you can run `notion ...` directly.
 
+When invoking through `just`, quoted multi-word values are preserved:
+
+```bash
+just notion update-page-property \
+  --page-id your-page-id \
+  --property-id error-log-id \
+  --property-type rich_text \
+  --text "hello world"
+```
+
 ## Output Modes
 
 - Default output is human-readable terminal text.
@@ -73,12 +83,19 @@ Examples:
   --property-id error-log-id \
   --property-type rich_text \
   --text "Rate limit from provider"
+
+# rich_text/text: clear existing value
+./bin/notion update-page-property \
+  --page-id your-page-id \
+  --property-id error-log-id \
+  --property-type rich_text \
+  --text ""
 ```
 
 Rules:
 - `status` and `select` require exactly one `--value-id` and reject `--text`.
 - `multi_select` requires one or more `--value-id` and rejects `--text`.
-- `rich_text` and `text` require non-empty `--text` and reject `--value-id`.
+- `rich_text` and `text` require `--text`, reject `--value-id`, allow `--text ""` to clear, and reject whitespace-only text like `"   "`.
 
 ## Notes
 

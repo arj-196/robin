@@ -1,4 +1,5 @@
 set shell := ["zsh", "-cu"]
+set positional-arguments := true
 
 default:
     @just --list
@@ -7,10 +8,10 @@ list:
     @find abilities -name ability.yaml | sort
 
 notion *args='--help':
-    ./bin/notion {{args}}
+    ./bin/notion "$@"
 
 auto-coder *args='--help':
-    ./bin/auto-coder {{args}}
+    ./bin/auto-coder "$@"
 
 dashboard *args='help':
-    ./bin/dashboard {{args}}
+    ./bin/dashboard "$@"

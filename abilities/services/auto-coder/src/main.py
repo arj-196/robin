@@ -19,17 +19,6 @@ STATUS_IN_PROGRESS = "In Progress"
 STATUS_DONE = "Done"
 STATUS_BLOCKED = "Blocked"
 
-FAILURE_CODES = [
-    "missing_repo",
-    "unknown_project",
-    "insufficient_spec",
-    "out_of_scope",
-    "codex_failure",
-    "test_failure",
-    "merge_failure",
-    "notion_update_failure",
-]
-
 ROOT = Path(__file__).resolve().parents[4]
 NOTION_BIN = ROOT / "bin" / "notion"
 AUTO_CODER_BIN = ROOT / "bin" / "auto-coder"
@@ -41,7 +30,7 @@ class Config:
     apps_root: Path
     status_property: str
     project_property: str
-    failure_property: str
+    error_log_property: str
     codex_model: str
     git_completion_mode: str
 
@@ -58,7 +47,7 @@ class PropertyBinding:
 class SchemaBindings:
     status: PropertyBinding
     project: PropertyBinding
-    failure: PropertyBinding
+    error_log: PropertyBinding
 
 
 @dataclass(frozen=True)
@@ -85,6 +74,27 @@ class CommandError(RuntimeError):
         self.stderr = stderr
 
 
+def summarize_command_output(text: str, limit: int = 1200) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    if len(cleaned) <= limit:
+        return cleaned
+    return f"{cleaned[:limit]}...[truncated]"
+
+
+def format_command_error(exc: CommandError) -> str:
+    command = " ".join(exc.command)
+    stderr = summarize_command_output(exc.stderr)
+    stdout = summarize_command_output(exc.stdout)
+    details: list[str] = [f"Command failed (exit {exc.returncode}): {command}"]
+    if stderr:
+        details.append(f"stderr: {stderr}")
+    if stdout:
+        details.append(f"stdout: {stdout}")
+    return "\n".join(details)
+
+
 def emit(event: str, **fields: Any) -> None:
     payload = {"event": event, **fields}
     typer.echo(json.dumps(payload, sort_keys=True))
@@ -105,7 +115,7 @@ def load_config() -> Config:
         apps_root=expand_path(os.getenv("APPS_ROOT", "~/apps")),
         status_property=os.getenv("AUTO_CODER_STATUS_PROPERTY", "Status").strip() or "Status",
         project_property=os.getenv("AUTO_CODER_PROJECT_PROPERTY", "Project").strip() or "Project",
-        failure_property=os.getenv("AUTO_CODER_FAILURE_PROPERTY", "Failure").strip() or "Failure",
+        error_log_property=os.getenv("AUTO_CODER_ERROR_LOG_PROPERTY", "Error Log").strip() or "Error Log",
         codex_model=os.getenv("AUTO_CODER_CODEX_MODEL", "gpt-5.3-codex").strip()
         or "gpt-5.3-codex",
         git_completion_mode=os.getenv(
@@ -135,7 +145,12 @@ def run_command(
 
 
 def run_json_command(command: list[str], cwd: Path | None = None) -> dict[str, Any]:
-    result = run_command(command, cwd=cwd)
+    # print command for debugging, but don't log the full output since it may contain sensitive information.
+    emit("debug_run_command", command=command, cwd=str(cwd) if cwd else None)
+    try:
+        result = run_command(command, cwd=cwd)
+    except CommandError as exc:
+        raise AutoCoderError("notion_update_failure", format_command_error(exc)) from exc
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
@@ -162,8 +177,8 @@ def discover_schema(properties_payload: dict[str, Any], config: Config) -> Schem
     by_name = {item.get("name"): item for item in properties if isinstance(item, dict)}
     status = bind_property(by_name, config.status_property, [STATUS_TO_DO, STATUS_IN_PROGRESS, STATUS_DONE, STATUS_BLOCKED])
     project = bind_property(by_name, config.project_property, [])
-    failure = bind_property(by_name, config.failure_property, FAILURE_CODES)
-    return SchemaBindings(status=status, project=project, failure=failure)
+    error_log = bind_text_property(by_name, config.error_log_property)
+    return SchemaBindings(status=status, project=project, error_log=error_log)
 
 
 def bind_property(
@@ -205,19 +220,28 @@ def bind_property(
     )
 
 
-def choose_failure_option(binding: PropertyBinding, desired_code: str) -> str:
-    if desired_code in binding.options_by_name:
-        return binding.options_by_name[desired_code]
-    if binding.options_by_name:
-        fallback_name, fallback_id = next(iter(binding.options_by_name.items()))
-        emit_error(
-            "failure_code_fallback",
-            desired_code=desired_code,
-            fallback_code=fallback_name,
-            property=binding.name,
+def bind_text_property(
+    properties_by_name: dict[Any, dict[str, Any]],
+    name: str,
+) -> PropertyBinding:
+    prop = properties_by_name.get(name)
+    if not isinstance(prop, dict):
+        raise AutoCoderError("insufficient_spec", f"Missing Notion property: {name}")
+    property_id = prop.get("property_id")
+    property_type = prop.get("type")
+    if not isinstance(property_id, str) or not isinstance(property_type, str):
+        raise AutoCoderError("insufficient_spec", f"Invalid Notion property metadata: {name}")
+    if property_type not in {"rich_text", "text"}:
+        raise AutoCoderError(
+            "insufficient_spec",
+            f"Property {name} must be a text property (rich_text/text), got: {property_type}",
         )
-        return fallback_id
-    raise AutoCoderError("notion_update_failure", f"Failure property {binding.name} has no options")
+    return PropertyBinding(
+        name=name,
+        property_id=property_id,
+        property_type=property_type,
+        options_by_name={},
+    )
 
 
 def update_option_property(page_id: str, binding: PropertyBinding, option_id: str) -> None:
@@ -236,13 +260,33 @@ def update_option_property(page_id: str, binding: PropertyBinding, option_id: st
     )
 
 
+def update_text_property(page_id: str, binding: PropertyBinding, text_value: str) -> None:
+    run_json_command(
+        notion_command(
+            "update-page-property",
+            "--page-id",
+            page_id,
+            "--property-id",
+            binding.property_id,
+            "--property-type",
+            binding.property_type,
+            "--text",
+            text_value,
+        )
+    )
+
+
 def set_status(page_id: str, bindings: SchemaBindings, status: str) -> None:
     update_option_property(page_id, bindings.status, bindings.status.options_by_name[status])
 
 
-def block_task(page_id: str, bindings: SchemaBindings, failure_code: str) -> None:
+def set_error_log(page_id: str, bindings: SchemaBindings, value: str) -> None:
+    update_text_property(page_id, bindings.error_log, value)
+
+
+def block_task(page_id: str, bindings: SchemaBindings, failure_code: str, message: str) -> None:
     set_status(page_id, bindings, STATUS_BLOCKED)
-    update_option_property(page_id, bindings.failure, choose_failure_option(bindings.failure, failure_code))
+    set_error_log(page_id, bindings, f"{failure_code}: {message}")
 
 
 def get_property_value(page: dict[str, Any], binding: PropertyBinding) -> str:
@@ -545,11 +589,15 @@ def run_once(config: Config) -> int:
         return 1
 
     emit("run_started", database_id=config.notion_database_id)
+    emit("progress", stage="notion_status_check")
     run_json_command(notion_command("status"))
+    emit("progress", stage="notion_load_database_properties")
     properties = run_json_command(
         notion_command("get-database-properties", "--database-id", config.notion_database_id)
     )
+    emit("progress", stage="notion_bind_schema")
     bindings = discover_schema(properties, config)
+    emit("progress", stage="notion_list_pages")
     pages = run_json_command(notion_command("list-pages", "--database-id", config.notion_database_id))
     page = select_todo_page(pages, bindings)
     if page is None:
@@ -559,27 +607,39 @@ def run_once(config: Config) -> int:
     page_id = get_page_id(page)
     title = extract_page_title(page)
     project = get_property_value(page, bindings.project)
-    emit("task_selected", task_id=page_id, title=title, project=project)
-    set_status(page_id, bindings, STATUS_IN_PROGRESS)
-    emit("task_claimed", task_id=page_id)
-
     try:
+        emit("task_selected", task_id=page_id, title=title, project=project)
+        emit("progress", stage="task_claim", task_id=page_id)
+        set_status(page_id, bindings, STATUS_IN_PROGRESS)
+        set_error_log(page_id, bindings, "")
+        emit("task_claimed", task_id=page_id)
+        emit("progress", stage="task_load_content", task_id=page_id)
         page_content = run_json_command(notion_command("get-page-content", "--page-id", page_id))
+        emit("progress", stage="task_extract_sections", task_id=page_id)
         sections = extract_task_sections(page_content)
+        emit("progress", stage="repo_resolve", task_id=page_id, project=project)
         repo = resolve_repo(config.apps_root, project)
+        emit("progress", stage="repo_validate", task_id=page_id, repo=str(repo))
         validate_repo(repo)
+        emit("progress", stage="git_prepare_branch", task_id=page_id)
         branch = prepare_git_branch(repo, page_id, title)
+        emit("progress", stage="codex_build_prompt", task_id=page_id)
         prompt = build_codex_prompt(repo, page_id, title, sections)
+        emit("progress", stage="codex_execute", task_id=page_id, branch=branch, model=config.codex_model)
         run_codex(repo, config, prompt)
         emit("codex_finished", task_id=page_id, success=True)
+        emit("progress", stage="git_complete_workflow", task_id=page_id, branch=branch)
         complete_git_workflow(repo, page_id, title, branch)
+        emit("progress", stage="notion_mark_done", task_id=page_id)
         set_status(page_id, bindings, STATUS_DONE)
+        set_error_log(page_id, bindings, "")
         emit("run_completed", result="done", task_id=page_id)
         return 0
     except AutoCoderError as exc:
+        emit("progress", stage="task_mark_blocked", task_id=page_id, failure_code=exc.failure_code)
         emit_error("task_blocked", task_id=page_id, failure_code=exc.failure_code, message=exc.message)
         try:
-            block_task(page_id, bindings, exc.failure_code)
+            block_task(page_id, bindings, exc.failure_code, exc.message)
         except Exception as block_exc:  # noqa: BLE001 - final reconciliation should be visible.
             emit_error(
                 "run_failed",
@@ -589,6 +649,14 @@ def run_once(config: Config) -> int:
             )
             return 1
         emit("run_completed", result="blocked", task_id=page_id, failure_code=exc.failure_code)
+        return 1
+    except Exception as exc:  # noqa: BLE001 - ensure uncaught errors are surfaced as structured output.
+        emit_error(
+            "run_failed",
+            task_id=page_id,
+            failure_code="internal_error",
+            message=str(exc) or exc.__class__.__name__,
+        )
         return 1
 
 

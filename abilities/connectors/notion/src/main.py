@@ -326,6 +326,7 @@ def build_option_property_value(
 ) -> dict[str, Any]:
     normalized_type = property_type.strip().lower()
     clean_value_ids = [value_id.strip() for value_id in value_ids if value_id.strip()]
+    has_text_argument = text is not None
     clean_text = text.strip() if isinstance(text, str) else ""
 
     if normalized_type in {"status", "select"}:
@@ -357,10 +358,17 @@ def build_option_property_value(
                 action,
                 f"'--value-id' is not allowed when '--property-type {normalized_type}' is used",
             )
+        if not has_text_argument:
+            raise InvalidRequestError(
+                action,
+                f"'{normalized_type}' requires '--text' (use '--text \"\"' to clear)",
+            )
+        if text == "":
+            return {"rich_text": []}
         if not clean_text:
             raise InvalidRequestError(
                 action,
-                f"'{normalized_type}' requires a non-empty '--text' value",
+                f"'{normalized_type}' does not allow whitespace-only '--text' (use '--text \"\"' to clear)",
             )
         return {"rich_text": [{"type": "text", "text": {"content": clean_text}}]}
 
