@@ -693,7 +693,7 @@ class NotionAbilityTests(unittest.TestCase):
     def test_bin_help_invocation(self) -> None:
         result = self.runner.invoke(main.app, ["--help"])
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Direct CLI for the Hermes Notion connector", result.stdout)
+        self.assertIn("Direct CLI for the Robin Notion connector", result.stdout)
 
 
 if __name__ == "__main__":

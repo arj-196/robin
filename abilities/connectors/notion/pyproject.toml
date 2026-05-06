@@ -1,7 +1,7 @@
 [project]
-name = "hermes-notion-ability"
+name = "robin-notion-ability"
 version = "0.1.0"
-description = "Hermes Notion connector ability."
+description = "Robin Notion connector ability."
 requires-python = ">=3.10"
 dependencies = [
   "typer>=0.20.0,<1.0.0",

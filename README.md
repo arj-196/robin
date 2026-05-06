@@ -1,6 +1,6 @@
-# Hermes Tools
+# Robin
 
-Hermes Tools is an internal-first monorepo of agent-facing abilities. Each
+Robin is an internal-first monorepo of agent-facing abilities. Each
 ability is self-contained, directly executable, and documented in its own
 folder.
 

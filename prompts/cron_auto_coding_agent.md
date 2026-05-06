@@ -68,7 +68,7 @@ Do not assume property IDs or option IDs. Discover them from the database schema
 13. Evaluate whether the task should be accepted.
 14. If accepted:
    - update local `main`
-   - create a branch named `hermes/<task-id>-<slug>`
+   - create a branch named `robin/<task-id>-<slug>`
    - invoke `/codex` with the task content, repo path, and completion requirements (delegated model: `gpt-5.3-codex`)
    - run verification commands in the repository
    - if verification passes, commit, merge to `main`, push, and update the Notion task to `Done`
@@ -141,7 +141,7 @@ Map any such failure to `codex_failure`.
 
 - Perform all git work inside `~/apps/<project>`.
 - Start from a clean, up-to-date `main`.
-- Create a branch named `hermes/<task-id>-<slug>`.
+- Create a branch named `robin/<task-id>-<slug>`.
 - Use a commit message that includes the task ID.
 - If verification fails, do not merge.
 - If merge conflicts occur, do not force resolution blindly. Mark the task `Blocked` with `merge_failure`.

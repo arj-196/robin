@@ -28,7 +28,7 @@ function startServer(): void {
   });
 
   server.listen(port, () => {
-    console.log(`Hermes dashboard listening on http://localhost:${port}`);
+    console.log(`Robin dashboard listening on http://localhost:${port}`);
   });
 }
 

@@ -1,7 +1,7 @@
 [project]
-name = "hermes-auto-coder-service"
+name = "robin-auto-coder-service"
 version = "0.1.0"
-description = "Hermes autonomous coding service."
+description = "Robin autonomous coding service."
 requires-python = ">=3.10"
 dependencies = [
   "typer>=0.20.0,<1.0.0",

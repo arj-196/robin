@@ -15,7 +15,7 @@ from typing import Any
 
 import typer
 
-app = typer.Typer(help="Cron-friendly autonomous coding service for Hermes.", no_args_is_help=True)
+app = typer.Typer(help="Cron-friendly autonomous coding service for Robin.", no_args_is_help=True)
 
 STATUS_TO_DO = "Todo"
 STATUS_IN_PROGRESS = "In Progress"
@@ -722,7 +722,7 @@ def build_codex_prompt(
     title: str,
     sections: TaskSections,
 ) -> str:
-    return f"""You are Codex working inside a target repository for Hermes auto-coder.
+    return f"""You are Codex working inside a target repository for Robin auto-coder.
 
 Target repository: {repo}
 Notion task ID: {task_id}
@@ -795,7 +795,7 @@ def run_codex(repo: Path, config: Config, prompt: str) -> None:
 
 
 def prepare_git_branch(repo: Path, task_id: str, title: str) -> str:
-    branch = f"hermes/{task_id[:8]}-{slugify(title)}"
+    branch = f"robin/{task_id[:8]}-{slugify(title)}"
     try:
         git(repo, "checkout", "main")
         git(repo, "pull", "--ff-only")

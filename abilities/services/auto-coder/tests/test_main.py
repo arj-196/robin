@@ -123,7 +123,7 @@ class AutoCoderTests(unittest.TestCase):
 
     def test_validate_repo_rejects_missing_repo(self) -> None:
         with self.assertRaises(main.AutoCoderError) as ctx:
-            main.validate_repo(Path("/tmp/definitely-missing-hermes-repo"))
+            main.validate_repo(Path("/tmp/definitely-missing-robin-repo"))
         self.assertEqual(ctx.exception.failure_code, "missing_repo")
 
     def test_validate_repo_uses_git_checks(self) -> None:
@@ -254,7 +254,7 @@ class AutoCoderTests(unittest.TestCase):
             "generate_commit_message_with_openrouter",
             return_value="feat: update parser\n\n- improve coverage\n\nNotion task: task-1",
         ):
-            main.complete_git_workflow(repo, config, "task-1", "Update parser", "hermes/task-1-update-parser")
+            main.complete_git_workflow(repo, config, "task-1", "Update parser", "robin/task-1-update-parser")
         commit_call = git_mock.call_args_list[2]
         self.assertEqual(commit_call.args[1], "commit")
         self.assertEqual(commit_call.args[2], "-m")

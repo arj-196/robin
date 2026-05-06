@@ -10,7 +10,7 @@ import typer
 NOTION_VERSION = "2022-06-28"
 NOTION_BASE_URL = "https://api.notion.com/v1"
 
-app = typer.Typer(help="Direct CLI for the Hermes Notion connector.", no_args_is_help=True)
+app = typer.Typer(help="Direct CLI for the Robin Notion connector.", no_args_is_help=True)
 
 
 class NotionAPIError(Exception):

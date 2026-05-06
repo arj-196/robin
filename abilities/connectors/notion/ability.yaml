@@ -1,5 +1,5 @@
 id: notion
 type: connector
 runtime: python
-description: Direct Notion CLI for Hermes.
+description: Direct Notion CLI for Robin.
 command: ./bin/notion

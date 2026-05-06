@@ -1,6 +1,6 @@
 # Dashboard Ability
 
-This ability exposes the Hermes dashboard directly as a CLI.
+This ability exposes the Robin dashboard directly as a CLI.
 
 ## Commands
 

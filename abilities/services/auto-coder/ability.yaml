@@ -1,5 +1,5 @@
 id: auto-coder
 type: service
 runtime: python
-description: Cron-friendly autonomous coding service for Hermes.
+description: Cron-friendly autonomous coding service for Robin.
 command: ./bin/auto-coder

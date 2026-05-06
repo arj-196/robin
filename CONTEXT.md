@@ -1,8 +1,8 @@
-# Hermes Tools Context
+# Robin Context
 
 ## Purpose
 
-Hermes Tools is the repository of executable abilities that the Hermes agent
+Robin is the repository of executable abilities that the Robin agent
 uses to perform work.
 
 ## Glossary
@@ -15,7 +15,7 @@ documentation.
 
 ### Connector
 
-An ability whose purpose is to integrate Hermes with an external system such as
+An ability whose purpose is to integrate Robin with an external system such as
 Notion.
 
 ### App
@@ -25,7 +25,7 @@ web experience.
 
 ### Service
 
-An ability that provides long-running operational behavior for Hermes. Services
+An ability that provides long-running operational behavior for Robin. Services
 are grouped separately from connectors and apps even when they share runtimes.
 
 ### Auto-coder service

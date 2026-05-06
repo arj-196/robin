@@ -33,7 +33,7 @@ wheels = [
 ]
 
 [[package]]
-name = "hermes-auto-coder-service"
+name = "robin-auto-coder-service"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

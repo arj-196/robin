@@ -1,6 +1,6 @@
 # Notion Connector Ability
 
-This ability exposes Notion as a direct `Typer` CLI for Hermes.
+This ability exposes Notion as a direct `Typer` CLI for Robin.
 
 ## Prerequisites
 
