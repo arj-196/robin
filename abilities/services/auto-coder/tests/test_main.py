@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
+import os
+import contextlib
 import tempfile
 import unittest
 import sys
@@ -164,12 +167,57 @@ class AutoCoderTests(unittest.TestCase):
             main.codex_report_is_usable("verification failed", "")
         self.assertEqual(ctx.exception.failure_code, "test_failure")
 
-    def test_emit_writes_json(self) -> None:
-        with patch("typer.echo") as echo:
+    def test_emit_writes_human_log(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {}, clear=True):
+            main.configure_logger()
             main.emit("run_completed", result="no_task")
-        payload = json.loads(echo.call_args.args[0])
-        self.assertEqual(payload["event"], "run_completed")
-        self.assertEqual(payload["result"], "no_task")
+        line = out.getvalue().strip()
+        self.assertRegex(
+            line,
+            r"^\[INFO\] \[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\] \[auto-coder\] \[run_completed\] \[result=no_task\]$",
+        )
+
+    def test_emit_debug_hidden_by_default(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {}, clear=True):
+            main.configure_logger()
+            main.emit_debug("progress", stage="repo_validate")
+        self.assertEqual(out.getvalue(), "")
+
+    def test_emit_debug_visible_with_env_level(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {"ROBIN_LOG_LEVEL": "debug"}, clear=False):
+            main.configure_logger()
+            main.emit_debug("progress", stage="repo_validate")
+        line = out.getvalue().strip()
+        self.assertIn("[DEBUG]", line)
+        self.assertIn("[progress]", line)
+        self.assertIn("[stage=repo_validate]", line)
+
+    def test_warn_level_suppresses_info(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {"ROBIN_LOG_LEVEL": "warn"}, clear=False):
+            main.configure_logger()
+            main.emit("run_started", database_id="db1")
+        self.assertEqual(out.getvalue(), "")
+
+    def test_message_fields_are_sorted(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {}, clear=True):
+            main.configure_logger()
+            main.emit("task_selected", title="Task", task_id="t1", project="p1")
+        line = out.getvalue().strip()
+        self.assertIn("[project=p1 task_id=t1 title=Task]", line)
+
+    def test_error_routes_to_stderr(self) -> None:
+        out = io.StringIO()
+        err = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), patch.dict(os.environ, {}, clear=True):
+            main.configure_logger()
+            main.emit_error("run_failed", message="boom")
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("[ERROR]", err.getvalue())
 
     def test_status_payload_reports_missing_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

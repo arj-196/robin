@@ -5,13 +5,15 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
+from loguru import logger
 
 app = typer.Typer(help="Cron-driven operational chore runner for Robin.", no_args_is_help=True)
 
@@ -20,6 +22,15 @@ CHORES_BIN = ROOT / "bin" / "chores"
 DEFAULT_TIMEZONE = "Europe/Paris"
 DEFAULT_STATE_FILE = ".robin/chores-state.json"
 DEFAULT_CODEX_INIT_COMMAND = 'codex exec "Reply with exactly: ok"'
+SERVICE_NAME = "chores"
+LEVEL_MAP = {
+    "debug": "DEBUG",
+    "info": "INFO",
+    "warn": "WARNING",
+    "warning": "WARNING",
+    "error": "ERROR",
+}
+LOG_FORMAT = "[<level>{level}</level>] [{extra[time_utc]}] [{extra[service]}] [{extra[event]}] [{message}]"
 
 
 @dataclass(frozen=True)
@@ -43,13 +54,63 @@ class ChoresError(Exception):
 
 
 def emit(event: str, **fields: Any) -> None:
-    payload = {"event": event, **fields}
-    typer.echo(json.dumps(payload, sort_keys=True))
+    log_event("INFO", event, **fields)
 
 
 def emit_error(event: str, **fields: Any) -> None:
-    payload = {"event": event, **fields}
-    typer.echo(json.dumps(payload, sort_keys=True), err=True)
+    log_event("ERROR", event, **fields)
+
+
+def emit_debug(event: str, **fields: Any) -> None:
+    log_event("DEBUG", event, **fields)
+
+
+def format_time_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def format_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def format_message(fields: dict[str, Any]) -> str:
+    if not fields:
+        return "-"
+    return " ".join(f"{key}={format_value(fields[key])}" for key in sorted(fields))
+
+
+def configure_logger() -> None:
+    configured = LEVEL_MAP.get(os.getenv("ROBIN_LOG_LEVEL", "info").strip().lower(), "INFO")
+    logger.remove()
+    logger.add(
+        sys.stdout,
+        level=configured,
+        format=LOG_FORMAT,
+        colorize=None,
+        filter=lambda record: record["level"].name != "ERROR",
+    )
+    logger.add(
+        sys.stderr,
+        level=configured,
+        format=LOG_FORMAT,
+        colorize=None,
+        filter=lambda record: record["level"].name == "ERROR",
+    )
+
+
+def log_event(level: str, event: str, **fields: Any) -> None:
+    logger.bind(
+        time_utc=format_time_utc(),
+        service=SERVICE_NAME,
+        event=event,
+    ).log(level, format_message(fields))
+
+
+configure_logger()
 
 
 def expand_path(value: str) -> Path:
@@ -170,7 +231,7 @@ def run_once(config: Config) -> int:
         due, reason = is_due(chore, chore_state, now_local)
 
         if not due:
-            emit("chore_skipped", chore_id=chore.id, reason=reason)
+            emit_debug("chore_skipped", chore_id=chore.id, reason=reason)
             continue
 
         emit("chore_started", chore_id=chore.id, command=chore.action_command)

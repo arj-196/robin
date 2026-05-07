@@ -28,6 +28,17 @@ Optional field-name configuration:
 - `OPENROUTER_API_KEY`, used to generate diff-aware commit messages
 - `AUTO_CODER_COMMIT_MODEL`, defaults to `openrouter/gpt-oss-120b`
 - `AUTO_CODER_COMMIT_MAX_CONTEXT_TOKENS`, defaults to `16000`
+- `ROBIN_LOG_LEVEL`, defaults to `info` (`debug|info|warn|error`)
+
+## Service Logs
+
+`run` outputs human-readable service events in this format:
+
+`[LEVEL] [TIME] [SERVICE] [EVENT] [MESSAGE]`
+
+- `TIME` is ISO-8601 UTC (`Z`)
+- `MESSAGE` is deterministic `key=value` pairs
+- `DEBUG` events are hidden unless `ROBIN_LOG_LEVEL=debug`
 
 ## Task Format
 

@@ -10,10 +10,12 @@ import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import typer
+from loguru import logger
 
 app = typer.Typer(help="Cron-friendly autonomous coding service for Robin.", no_args_is_help=True)
 
@@ -25,6 +27,15 @@ STATUS_BLOCKED = "Blocked"
 ROOT = Path(__file__).resolve().parents[4]
 NOTION_BIN = ROOT / "bin" / "notion"
 AUTO_CODER_BIN = ROOT / "bin" / "auto-coder"
+SERVICE_NAME = "auto-coder"
+LEVEL_MAP = {
+    "debug": "DEBUG",
+    "info": "INFO",
+    "warn": "WARNING",
+    "warning": "WARNING",
+    "error": "ERROR",
+}
+LOG_FORMAT = "[<level>{level}</level>] [{extra[time_utc]}] [{extra[service]}] [{extra[event]}] [{message}]"
 
 
 @dataclass(frozen=True)
@@ -102,13 +113,67 @@ def format_command_error(exc: CommandError) -> str:
 
 
 def emit(event: str, **fields: Any) -> None:
-    payload = {"event": event, **fields}
-    typer.echo(json.dumps(payload, sort_keys=True))
+    log_event("INFO", event, **fields)
 
 
 def emit_error(event: str, **fields: Any) -> None:
-    payload = {"event": event, **fields}
-    typer.echo(json.dumps(payload, sort_keys=True), err=True)
+    log_event("ERROR", event, **fields)
+
+
+def emit_debug(event: str, **fields: Any) -> None:
+    log_event("DEBUG", event, **fields)
+
+
+def emit_warn(event: str, **fields: Any) -> None:
+    log_event("WARNING", event, **fields)
+
+
+def format_time_utc() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def format_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def format_message(fields: dict[str, Any]) -> str:
+    if not fields:
+        return "-"
+    return " ".join(f"{key}={format_value(fields[key])}" for key in sorted(fields))
+
+
+def configure_logger() -> None:
+    configured = LEVEL_MAP.get(os.getenv("ROBIN_LOG_LEVEL", "info").strip().lower(), "INFO")
+    logger.remove()
+    logger.add(
+        sys.stdout,
+        level=configured,
+        format=LOG_FORMAT,
+        colorize=None,
+        filter=lambda record: record["level"].name != "ERROR",
+    )
+    logger.add(
+        sys.stderr,
+        level=configured,
+        format=LOG_FORMAT,
+        colorize=None,
+        filter=lambda record: record["level"].name == "ERROR",
+    )
+
+
+def log_event(level: str, event: str, **fields: Any) -> None:
+    logger.bind(
+        time_utc=format_time_utc(),
+        service=SERVICE_NAME,
+        event=event,
+    ).log(level, format_message(fields))
+
+
+configure_logger()
 
 
 def expand_path(value: str) -> Path:
@@ -840,15 +905,15 @@ def run_once(config: Config) -> int:
         return 1
 
     emit("run_started", database_id=config.notion_database_id)
-    emit("progress", stage="notion_status_check")
+    emit_debug("progress", stage="notion_status_check")
     run_json_command(notion_command("status"))
-    emit("progress", stage="notion_load_database_properties")
+    emit_debug("progress", stage="notion_load_database_properties")
     properties = run_json_command(
         notion_command("get-database-properties", "--database-id", config.notion_database_id)
     )
-    emit("progress", stage="notion_bind_schema")
+    emit_debug("progress", stage="notion_bind_schema")
     bindings = discover_schema(properties, config)
-    emit("progress", stage="notion_list_pages")
+    emit_debug("progress", stage="notion_list_pages")
     pages = run_json_command(notion_command("list-pages", "--database-id", config.notion_database_id))
     page = select_todo_page(pages, bindings)
     if page is None:
@@ -860,35 +925,35 @@ def run_once(config: Config) -> int:
     project = get_property_value(page, bindings.project)
     try:
         emit("task_selected", task_id=page_id, title=title, project=project)
-        emit("progress", stage="task_claim", task_id=page_id)
+        emit_debug("progress", stage="task_claim", task_id=page_id)
         set_status(page_id, bindings, STATUS_IN_PROGRESS)
         set_error_log(page_id, bindings, "")
         emit("task_claimed", task_id=page_id)
-        emit("progress", stage="task_load_content", task_id=page_id)
+        emit_debug("progress", stage="task_load_content", task_id=page_id)
         page_content = run_json_command(notion_command("get-page-content", "--page-id", page_id))
-        emit("progress", stage="task_extract_sections", task_id=page_id)
+        emit_debug("progress", stage="task_extract_sections", task_id=page_id)
         sections = extract_task_sections(page_content)
-        emit("progress", stage="repo_resolve", task_id=page_id, project=project)
+        emit_debug("progress", stage="repo_resolve", task_id=page_id, project=project)
         repo = resolve_repo(config.apps_root, project)
-        emit("progress", stage="repo_validate", task_id=page_id, repo=str(repo))
+        emit_debug("progress", stage="repo_validate", task_id=page_id, repo=str(repo))
         validate_repo(repo)
-        emit("progress", stage="git_prepare_branch", task_id=page_id)
+        emit_debug("progress", stage="git_prepare_branch", task_id=page_id)
         branch = prepare_git_branch(repo, page_id, title)
-        emit("progress", stage="codex_build_prompt", task_id=page_id)
+        emit_debug("progress", stage="codex_build_prompt", task_id=page_id)
         prompt = build_codex_prompt(repo, page_id, title, sections)
-        emit("progress", stage="codex_execute", task_id=page_id, branch=branch, model=config.codex_model)
+        emit_debug("progress", stage="codex_execute", task_id=page_id, branch=branch, model=config.codex_model)
         run_codex(repo, config, prompt)
         emit("codex_finished", task_id=page_id, success=True)
-        emit("progress", stage="git_complete_workflow", task_id=page_id, branch=branch)
+        emit_debug("progress", stage="git_complete_workflow", task_id=page_id, branch=branch)
         complete_git_workflow(repo, config, page_id, title, branch)
-        emit("progress", stage="notion_mark_done", task_id=page_id)
+        emit_debug("progress", stage="notion_mark_done", task_id=page_id)
         set_status(page_id, bindings, STATUS_DONE)
         set_error_log(page_id, bindings, "")
         emit("run_completed", result="done", task_id=page_id)
         return 0
     except AutoCoderError as exc:
-        emit("progress", stage="task_mark_blocked", task_id=page_id, failure_code=exc.failure_code)
-        emit_error("task_blocked", task_id=page_id, failure_code=exc.failure_code, message=exc.message)
+        emit_warn("progress", stage="task_mark_blocked", task_id=page_id, failure_code=exc.failure_code)
+        emit_warn("task_blocked", task_id=page_id, failure_code=exc.failure_code, message=exc.message)
         try:
             block_task(page_id, bindings, exc.failure_code, exc.message)
         except Exception as block_exc:  # noqa: BLE001 - final reconciliation should be visible.

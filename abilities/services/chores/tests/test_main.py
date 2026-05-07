@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import contextlib
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -20,6 +23,43 @@ SPEC.loader.exec_module(main)
 
 
 class ChoresTests(unittest.TestCase):
+    def test_emit_writes_human_log(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {}, clear=True):
+            main.configure_logger()
+            main.emit("run_completed", result="ok")
+        line = out.getvalue().strip()
+        self.assertRegex(
+            line,
+            r"^\[INFO\] \[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\] \[chores\] \[run_completed\] \[result=ok\]$",
+        )
+
+    def test_emit_debug_hidden_by_default(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {}, clear=True):
+            main.configure_logger()
+            main.emit_debug("chore_skipped", chore_id="codex-init", reason="outside_window")
+        self.assertEqual(out.getvalue(), "")
+
+    def test_emit_debug_visible_with_env_level(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.dict(os.environ, {"ROBIN_LOG_LEVEL": "debug"}, clear=False):
+            main.configure_logger()
+            main.emit_debug("chore_skipped", chore_id="codex-init", reason="outside_window")
+        line = out.getvalue().strip()
+        self.assertIn("[DEBUG]", line)
+        self.assertIn("[chore_skipped]", line)
+        self.assertIn("[chore_id=codex-init reason=outside_window]", line)
+
+    def test_error_routes_to_stderr(self) -> None:
+        out = io.StringIO()
+        err = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), patch.dict(os.environ, {}, clear=True):
+            main.configure_logger()
+            main.emit_error("run_failed", message="boom")
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("[ERROR]", err.getvalue())
+
     def test_is_due_in_window_when_not_succeeded_today(self) -> None:
         chore = main.Chore("codex-init", "desc", 9, "echo ok", True)
         now = datetime.fromisoformat("2026-05-07T09:10:00+02:00")
