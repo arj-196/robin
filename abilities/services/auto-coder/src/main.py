@@ -865,9 +865,6 @@ def validate_repo(repo: Path) -> None:
         != 0
     ):
         raise AutoCoderError("missing_repo", "Repository has no local main branch")
-    status = git(repo, "status", "--porcelain").stdout.strip()
-    if status:
-        raise AutoCoderError("missing_repo", "Repository worktree is not clean")
     conflicts = git(repo, "diff", "--name-only", "--diff-filter=U").stdout.strip()
     if conflicts:
         raise AutoCoderError(
@@ -962,10 +959,13 @@ def run_codex(repo: Path, config: Config, prompt: str) -> None:
 
 
 def prepare_git_branch(repo: Path, task_id: str, title: str) -> str:
-    branch = f"robin/{task_id[:8]}-{slugify(title)}"
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    branch = f"robin/{task_id[:8]}-{slugify(title)}-{timestamp}"
     try:
         git(repo, "checkout", "main")
-        git(repo, "pull", "--ff-only")
+        git(repo, "fetch", "origin", "main")
+        git(repo, "reset", "--hard", "origin/main")
+        git(repo, "clean", "-fd")
         git(repo, "checkout", "-b", branch)
         return branch
     except CommandError as exc:

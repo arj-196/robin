@@ -180,24 +180,47 @@ class AutoCoderTests(unittest.TestCase):
                 main.subprocess.CompletedProcess(["git"], 0, "true\n", ""),
                 main.subprocess.CompletedProcess(["git"], 0, "", ""),
                 main.subprocess.CompletedProcess(["git"], 0, "", ""),
-                main.subprocess.CompletedProcess(["git"], 0, "", ""),
             ]
             with patch.object(main, "git", side_effect=responses) as git:
                 main.validate_repo(repo)
-            self.assertEqual(git.call_count, 4)
+            self.assertEqual(git.call_count, 3)
 
-    def test_validate_repo_rejects_dirty_worktree_from_mocked_git(self) -> None:
+    def test_validate_repo_does_not_check_worktree_cleanliness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             responses = [
                 main.subprocess.CompletedProcess(["git"], 0, "true\n", ""),
                 main.subprocess.CompletedProcess(["git"], 0, "", ""),
-                main.subprocess.CompletedProcess(["git"], 0, " M file.py\n", ""),
+                main.subprocess.CompletedProcess(["git"], 0, "", ""),
             ]
-            with patch.object(main, "git", side_effect=responses):
-                with self.assertRaises(main.AutoCoderError) as ctx:
-                    main.validate_repo(repo)
-            self.assertEqual(ctx.exception.failure_code, "missing_repo")
+            with patch.object(main, "git", side_effect=responses) as git:
+                main.validate_repo(repo)
+            commands = [call.args[1:] for call in git.call_args_list]
+            self.assertNotIn(("status", "--porcelain"), commands)
+
+    def test_prepare_git_branch_uses_latest_main_and_timestamp_suffix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            with (
+                patch.object(main, "git") as git,
+                patch.object(main, "datetime") as mock_datetime,
+            ):
+                mock_datetime.utcnow.return_value.strftime.return_value = (
+                    "20260507-123456"
+                )
+                branch = main.prepare_git_branch(repo, "12345678-abcd", "My Task")
+        self.assertEqual(branch, "robin/12345678-my-task-20260507-123456")
+        commands = [call.args[1:] for call in git.call_args_list]
+        self.assertEqual(
+            commands,
+            [
+                ("checkout", "main"),
+                ("fetch", "origin", "main"),
+                ("reset", "--hard", "origin/main"),
+                ("clean", "-fd"),
+                ("checkout", "-b", "robin/12345678-my-task-20260507-123456"),
+            ],
+        )
 
     def test_build_codex_command_uses_expected_boundary(self) -> None:
         command = main.build_codex_command(Path("/tmp/apps/sample"), "gpt-5.3-codex")
