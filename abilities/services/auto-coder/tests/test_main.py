@@ -11,6 +11,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from typer.testing import CliRunner
+
 MODULE_PATH = Path(__file__).resolve().parents[1] / "src" / "main.py"
 SPEC = importlib.util.spec_from_file_location("auto_coder_main", MODULE_PATH)
 assert SPEC is not None
@@ -274,6 +276,54 @@ class AutoCoderTests(unittest.TestCase):
             )
             payload = main.build_status_payload(config)
             self.assertFalse(payload["ok"])
+            self.assertIn("last_run", payload)
+            self.assertIn("last_log_path", payload)
+
+    def test_run_once_missing_database_reports_failed_outcome(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = main.run_once(
+                main.Config(
+                    notion_database_id="",
+                    apps_root=Path(tmp),
+                    status_property="Status",
+                    project_property="Project",
+                    error_log_property="Error Log",
+                    codex_model="gpt-5.3-codex",
+                    git_completion_mode="auto_merge_main",
+                    openrouter_api_key="",
+                    commit_model="openrouter/gpt-oss-120b",
+                    commit_max_context_tokens=16000,
+                )
+            )
+        self.assertEqual(outcome.result, "failed")
+        self.assertEqual(outcome.failure_code, "notion_update_failure")
+
+    def test_history_show_log_includes_recorded_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {
+                "ROBIN_RUN_LEDGER_DIR": str(Path(tmp) / ".robin"),
+                "ROBIN_LOG_RUNS_DIR": str(Path(tmp) / ".robin" / "logs"),
+            },
+            clear=False,
+        ):
+            main.configure_logger()
+            run = main.ServiceRun(
+                main.load_observability_config(main.ROOT),
+                service=main.SERVICE_NAME,
+                command="./bin/auto-coder run",
+                log_level=main.resolve_log_level(),
+                log_format=main.LOG_FORMAT,
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                run.start()
+                main.emit("run_completed", result="no_task")
+                run.finish(main.RunOutcome(result="no_task", exit_code=0))
+            result = CliRunner().invoke(main.app, ["history", "--run-id", run.run_id])
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('"result": "no_task"', result.output)
+        self.assertIn(f'"run_id": "{run.run_id}"', result.output)
+        self.assertIn("[run_completed]", result.output)
 
     def test_fallback_commit_message_is_conventional(self) -> None:
         message = main.build_fallback_commit_message(

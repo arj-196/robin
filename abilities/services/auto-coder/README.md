@@ -8,6 +8,7 @@ and completes the git workflow when Codex reports successful verification.
 
 ```bash
 ./bin/auto-coder status
+./bin/auto-coder history
 ./bin/auto-coder run
 ./bin/auto-coder install-cron
 ```
@@ -16,7 +17,7 @@ and completes the git workflow when Codex reports successful verification.
 
 - `NOTION_API_KEY`: required by `./bin/notion`
 - `NOTION_TASK_DATABASE_ID`: Notion task database
-- `APPS_ROOT`: root directory containing target repositories, defaults to `~/apps`
+- `AUTO_CODER_APPS_ROOT`: root directory containing target repositories, defaults to `~/apps`
 
 Optional field-name configuration:
 
@@ -28,6 +29,10 @@ Optional field-name configuration:
 - `OPENROUTER_API_KEY`, used to generate diff-aware commit messages
 - `AUTO_CODER_COMMIT_MODEL`, defaults to `openrouter/gpt-oss-120b`
 - `AUTO_CODER_COMMIT_MAX_CONTEXT_TOKENS`, defaults to `16000`
+- `ROBIN_RUN_LEDGER_DIR`, defaults to `.robin`
+- `ROBIN_LOG_RUNS_DIR`, defaults to `.robin/logs`
+- `ROBIN_TELEGRAM_BOT_TOKEN`, optional Telegram bot token for failure alerts
+- `ROBIN_TELEGRAM_CHAT_ID`, optional Telegram chat ID for failure alerts
 - `ROBIN_LOG_LEVEL`, defaults to `info` (`debug|info|warn|error`)
 
 ## Service Logs
@@ -39,6 +44,14 @@ Optional field-name configuration:
 - `TIME` is ISO-8601 UTC (`Z`)
 - `MESSAGE` is deterministic `key=value` pairs
 - `DEBUG` events are hidden unless `ROBIN_LOG_LEVEL=debug`
+
+Each cron execution also creates:
+
+- a `run ledger` entry in `.robin/run-ledger.jsonl`
+- a dedicated `run log` file at `.robin/logs/auto-coder/<YYYY-MM-DD>-<run_id>.log`
+
+Use `./bin/auto-coder history --limit 10` to inspect recent finished runs.
+Add `--show-log` to print the stored log contents for those runs.
 
 ## Task Format
 
@@ -53,7 +66,7 @@ Tasks missing any required section are marked `Blocked` with
 
 ## Safety Boundary
 
-The service resolves `Project` to `APPS_ROOT/<Project>`, rejects paths that
-escape `APPS_ROOT`, requires a clean local `main` branch, and invokes Codex with
+The service resolves `Project` to `AUTO_CODER_APPS_ROOT/<Project>`, rejects paths that
+escape `AUTO_CODER_APPS_ROOT`, requires a clean local `main` branch, and invokes Codex with
 `--sandbox workspace-write`. For this POC, Codex's reported verification is
 trusted; the service does not rerun verification commands.

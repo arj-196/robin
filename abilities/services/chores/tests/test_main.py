@@ -8,9 +8,11 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
+
+from typer.testing import CliRunner
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "src" / "main.py"
 SPEC = importlib.util.spec_from_file_location("chores_main", MODULE_PATH)
@@ -19,6 +21,8 @@ main = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules["chores_main"] = main
 SPEC.loader.exec_module(main)
+
+from abilities.services import shared_observability as shared  # noqa: E402
 
 
 class ChoresTests(unittest.TestCase):
@@ -105,6 +109,8 @@ class ChoresTests(unittest.TestCase):
         payload = main.build_status_payload(config)
         self.assertFalse(payload["ok"])
         self.assertFalse(payload["checks"]["timezone_valid"])
+        self.assertIn("last_run", payload)
+        self.assertIn("last_log_path", payload)
 
     def test_run_once_retries_until_success_across_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -125,8 +131,9 @@ class ChoresTests(unittest.TestCase):
                     args=["cmd"], returncode=1, stdout="", stderr="boom"
                 ),
             ):
-                code = main.run_once(config)
-                self.assertEqual(code, 1)
+                outcome = main.run_once(config)
+                self.assertEqual(outcome.exit_code, 1)
+                self.assertEqual(outcome.result, "failed")
 
             failed_state = json.loads(state_file.read_text(encoding="utf-8"))
             self.assertEqual(failed_state["codex-init"]["last_error"], "boom")
@@ -143,8 +150,9 @@ class ChoresTests(unittest.TestCase):
                     args=["cmd"], returncode=0, stdout="ok\n", stderr=""
                 ),
             ):
-                code = main.run_once(config)
-                self.assertEqual(code, 0)
+                outcome = main.run_once(config)
+                self.assertEqual(outcome.exit_code, 0)
+                self.assertEqual(outcome.result, "ok")
 
             success_state = json.loads(state_file.read_text(encoding="utf-8"))
             self.assertEqual(
@@ -176,9 +184,112 @@ class ChoresTests(unittest.TestCase):
                 "now_in_timezone",
                 return_value=datetime.fromisoformat("2026-05-07T09:15:00+02:00"),
             ), patch.object(main, "run_shell_command") as run_cmd:
-                code = main.run_once(config)
-                self.assertEqual(code, 0)
+                outcome = main.run_once(config)
+                self.assertEqual(outcome.exit_code, 0)
+                self.assertEqual(outcome.result, "ok")
                 run_cmd.assert_not_called()
+
+    def test_status_payload_reports_latest_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {
+                "ROBIN_RUN_LEDGER_DIR": str(Path(tmp) / ".robin"),
+                "ROBIN_LOG_RUNS_DIR": str(Path(tmp) / ".robin" / "logs"),
+            },
+            clear=False,
+        ):
+            main.configure_logger()
+            run = main.ServiceRun(
+                main.load_observability_config(main.ROOT),
+                service=main.SERVICE_NAME,
+                command="./bin/chores run",
+                log_level=main.resolve_log_level(),
+                log_format=main.LOG_FORMAT,
+            )
+            run.start()
+            main.emit("run_completed", result="ok")
+            run.finish(main.RunOutcome(result="ok", exit_code=0))
+
+            payload = main.build_status_payload(
+                main.Config(
+                    timezone_name="Europe/Paris",
+                    state_file=Path(tmp) / "state.json",
+                    codex_init_command='codex exec "Reply with exactly: ok"',
+                )
+            )
+
+        self.assertEqual(payload["last_run"]["result"], "ok")
+        self.assertEqual(payload["last_log_path"], payload["last_run"]["log_path"])
+
+    def test_print_history_show_log_includes_log_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {
+                "ROBIN_RUN_LEDGER_DIR": str(Path(tmp) / ".robin"),
+                "ROBIN_LOG_RUNS_DIR": str(Path(tmp) / ".robin" / "logs"),
+            },
+            clear=False,
+        ):
+            main.configure_logger()
+            run = main.ServiceRun(
+                main.load_observability_config(main.ROOT),
+                service=main.SERVICE_NAME,
+                command="./bin/chores run",
+                log_level=main.resolve_log_level(),
+                log_format=main.LOG_FORMAT,
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                run.start()
+                main.emit("chore_started", chore_id="codex-init", command="echo ok")
+                run.finish(main.RunOutcome(result="ok", exit_code=0))
+            result = CliRunner().invoke(
+                main.app, ["history", "--show-log", "--limit", "1"]
+            )
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('"result": "ok"', result.output)
+        self.assertIn("[chore_started]", result.output)
+
+    def test_history_prunes_old_records_and_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {
+                "ROBIN_RUN_LEDGER_DIR": str(Path(tmp) / ".robin"),
+                "ROBIN_LOG_RUNS_DIR": str(Path(tmp) / ".robin" / "logs"),
+            },
+            clear=False,
+        ):
+            config = main.load_observability_config(main.ROOT)
+            old_log = config.logs_dir / main.SERVICE_NAME / "2026-01-01-oldrun.log"
+            old_log.parent.mkdir(parents=True, exist_ok=True)
+            old_log.write_text("old log\n", encoding="utf-8")
+            old_time = datetime.now(timezone.utc) - timedelta(days=45)
+            os.utime(old_log, (old_time.timestamp(), old_time.timestamp()))
+            old_record = main.RunRecord(
+                event="run_finished",
+                run_id="oldrun",
+                service=main.SERVICE_NAME,
+                command="./bin/chores run",
+                started_at=(old_time - timedelta(minutes=1))
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                finished_at=old_time.replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                duration_ms=1000,
+                result="ok",
+                exit_code=0,
+                failure_code=None,
+                message=None,
+                log_path=str(old_log),
+                metadata={},
+            )
+            main.append_record(config, old_record)
+
+            history = shared.get_run_history(config, main.SERVICE_NAME, limit=10)
+
+        self.assertEqual(history, [])
+        self.assertFalse(old_log.exists())
 
 
 if __name__ == "__main__":

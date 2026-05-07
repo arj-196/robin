@@ -39,6 +39,16 @@ daily behavior.
 The service ability that claims coding tasks from Notion, delegates repository
 edits to Codex, and completes the git workflow for one task per run.
 
+### Run ledger
+
+The append-only local history of service executions. It records one started
+event and one finished event for each cron-invoked service run.
+
+### Run log
+
+The dedicated log file emitted for one service execution. A run log is linked
+to its corresponding run ledger entry through the shared run identifier.
+
 ### Manifest
 
 The lightweight machine-readable metadata for a single ability. It defines basic

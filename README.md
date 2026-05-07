@@ -43,7 +43,9 @@ Use the checked-in shims directly:
 ./bin/notion --help
 ./bin/notion status
 ./bin/auto-coder status
+./bin/auto-coder history
 ./bin/chores status
+./bin/chores history
 ./bin/dashboard help
 ./bin/dashboard serve
 ```
@@ -54,7 +56,9 @@ If you add `bin/` to your `PATH`, the same commands can be run as:
 notion --help
 notion list-pages --database-id your-database-id --json
 auto-coder status
+auto-coder history
 chores status
+chores history
 dashboard status
 ```
 
@@ -85,6 +89,13 @@ Local development uses a single root `.env` file for convenience.
 ```bash
 cp .env.example .env
 ```
+
+Cron-invoked services also support shared observability settings:
+
+- `ROBIN_RUN_LEDGER_DIR`
+- `ROBIN_LOG_RUNS_DIR`
+- `ROBIN_TELEGRAM_BOT_TOKEN`
+- `ROBIN_TELEGRAM_CHAT_ID`
 
 ## Sample Abilities
 

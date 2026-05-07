@@ -10,7 +10,7 @@ import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,16 +27,22 @@ STATUS_DONE = "Done"
 STATUS_BLOCKED = "Blocked"
 
 ROOT = Path(__file__).resolve().parents[4]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from abilities.services.shared_observability import RunOutcome  # noqa: E402
+from abilities.services.shared_observability import (
+    ServiceRun,
+    format_time_utc,
+    get_latest_run,
+    load_observability_config,
+    register_history_command,
+    resolve_log_level,
+)
+
 NOTION_BIN = ROOT / "bin" / "notion"
 AUTO_CODER_BIN = ROOT / "bin" / "auto-coder"
 SERVICE_NAME = "auto-coder"
-LEVEL_MAP = {
-    "debug": "DEBUG",
-    "info": "INFO",
-    "warn": "WARNING",
-    "warning": "WARNING",
-    "error": "ERROR",
-}
 LOG_FORMAT = "[<level>{level}</level>] [{extra[time_utc]}] [{extra[service]}] [{extra[event]}] [{message}]"
 
 
@@ -134,15 +140,6 @@ def emit_warn(event: str, **fields: Any) -> None:
     log_event("WARNING", event, **fields)
 
 
-def format_time_utc() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-
-
 def format_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -158,9 +155,7 @@ def format_message(fields: dict[str, Any]) -> str:
 
 
 def configure_logger() -> None:
-    configured = LEVEL_MAP.get(
-        os.getenv("ROBIN_LOG_LEVEL", "info").strip().lower(), "INFO"
-    )
+    configured = resolve_log_level()
     logger.remove()
     logger.add(
         sys.stdout,
@@ -196,7 +191,7 @@ def expand_path(value: str) -> Path:
 def load_config() -> Config:
     return Config(
         notion_database_id=os.getenv("NOTION_TASK_DATABASE_ID", "").strip(),
-        apps_root=expand_path(os.getenv("APPS_ROOT", "~/apps")),
+        apps_root=expand_path(os.getenv("AUTO_CODER_APPS_ROOT", "~/apps")),
         status_property=os.getenv("AUTO_CODER_STATUS_PROPERTY", "Status").strip()
         or "Status",
         project_property=os.getenv("AUTO_CODER_PROJECT_PROPERTY", "Project").strip()
@@ -1003,21 +998,31 @@ def get_page_id(page: dict[str, Any]) -> str:
     return page_id
 
 
-def run_once(config: Config) -> int:
+def run_once(config: Config) -> RunOutcome:
     if not config.notion_database_id:
         emit_error(
             "run_failed",
             failure_code="notion_update_failure",
             message="NOTION_TASK_DATABASE_ID is required",
         )
-        return 1
+        return RunOutcome(
+            result="failed",
+            exit_code=1,
+            failure_code="notion_update_failure",
+            message="NOTION_TASK_DATABASE_ID is required",
+        )
     if config.git_completion_mode != "auto_merge_main":
         emit_error(
             "run_failed",
             failure_code="out_of_scope",
             message=f"Unsupported completion mode: {config.git_completion_mode}",
         )
-        return 1
+        return RunOutcome(
+            result="failed",
+            exit_code=1,
+            failure_code="out_of_scope",
+            message=f"Unsupported completion mode: {config.git_completion_mode}",
+        )
 
     emit("run_started", database_id=config.notion_database_id)
     emit_debug("progress", stage="notion_status_check")
@@ -1037,7 +1042,7 @@ def run_once(config: Config) -> int:
     page = select_todo_page(pages, bindings)
     if page is None:
         emit("run_completed", result="no_task")
-        return 0
+        return RunOutcome(result="no_task", exit_code=0)
 
     page_id = get_page_id(page)
     title = extract_page_title(page)
@@ -1079,7 +1084,11 @@ def run_once(config: Config) -> int:
         set_status(page_id, bindings, STATUS_DONE)
         set_error_log(page_id, bindings, "")
         emit("run_completed", result="done", task_id=page_id)
-        return 0
+        return RunOutcome(
+            result="ok",
+            exit_code=0,
+            metadata={"task_id": page_id, "project": project},
+        )
     except AutoCoderError as exc:
         emit_warn(
             "progress",
@@ -1104,14 +1113,26 @@ def run_once(config: Config) -> int:
                 failure_code="notion_update_failure",
                 message=str(block_exc),
             )
-            return 1
+            return RunOutcome(
+                result="failed",
+                exit_code=1,
+                failure_code="notion_update_failure",
+                message=str(block_exc),
+                metadata={"task_id": page_id, "project": project},
+            )
         emit(
             "run_completed",
             result="blocked",
             task_id=page_id,
             failure_code=exc.failure_code,
         )
-        return 1
+        return RunOutcome(
+            result="blocked",
+            exit_code=1,
+            failure_code=exc.failure_code,
+            message=exc.message,
+            metadata={"task_id": page_id, "project": project},
+        )
     except (
         Exception
     ) as exc:  # noqa: BLE001 - ensure uncaught errors are surfaced as structured output.
@@ -1121,10 +1142,18 @@ def run_once(config: Config) -> int:
             failure_code="internal_error",
             message=str(exc) or exc.__class__.__name__,
         )
-        return 1
+        return RunOutcome(
+            result="failed",
+            exit_code=1,
+            failure_code="internal_error",
+            message=str(exc) or exc.__class__.__name__,
+            metadata={"task_id": page_id, "project": project},
+        )
 
 
 def build_status_payload(config: Config) -> dict[str, Any]:
+    observability = load_observability_config(ROOT)
+    last_run = get_latest_run(observability, SERVICE_NAME)
     return {
         "ability": "auto-coder",
         "ok": bool(config.notion_database_id)
@@ -1142,7 +1171,14 @@ def build_status_payload(config: Config) -> dict[str, Any]:
             "commit_model": config.commit_model,
             "openrouter_api_key_configured": bool(config.openrouter_api_key),
             "commit_max_context_tokens": config.commit_max_context_tokens,
+            "run_ledger_path": str(observability.ledger_path),
+            "run_logs_dir": str(observability.logs_dir),
+            "telegram_configured": bool(
+                observability.telegram_bot_token and observability.telegram_chat_id
+            ),
         },
+        "last_run": last_run.to_dict() if last_run is not None else None,
+        "last_log_path": last_run.log_path if last_run is not None else None,
     }
 
 
@@ -1153,6 +1189,9 @@ def status() -> None:
     typer.echo(json.dumps(payload, indent=2, sort_keys=True))
     if not payload["ok"]:
         raise typer.Exit(code=1)
+
+
+register_history_command(app, root=ROOT, service=SERVICE_NAME)
 
 
 @app.command("install-cron")
@@ -1169,7 +1208,33 @@ def install_cron(
 @app.command()
 def run() -> None:
     """Process at most one Notion task."""
-    raise typer.Exit(code=run_once(load_config()))
+    observability = load_observability_config(ROOT)
+    service_run = ServiceRun(
+        observability,
+        service=SERVICE_NAME,
+        command="./bin/auto-coder run",
+        log_level=resolve_log_level(),
+        log_format=LOG_FORMAT,
+    )
+    service_run.start()
+    try:
+        outcome = run_once(load_config())
+    except Exception as exc:  # noqa: BLE001 - final run failure must be recorded.
+        emit_error(
+            "run_failed",
+            failure_code="internal_error",
+            message=str(exc) or exc.__class__.__name__,
+        )
+        outcome = RunOutcome(
+            result="failed",
+            exit_code=1,
+            failure_code="internal_error",
+            message=str(exc) or exc.__class__.__name__,
+        )
+        service_run.finish(outcome)
+        raise
+    service_run.finish(outcome)
+    raise typer.Exit(code=outcome.exit_code)
 
 
 if __name__ == "__main__":

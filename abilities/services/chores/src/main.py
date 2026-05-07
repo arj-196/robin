@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -20,18 +20,26 @@ app = typer.Typer(
 )
 
 ROOT = Path(__file__).resolve().parents[4]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from abilities.services.shared_observability import RunOutcome  # noqa: E402
+from abilities.services.shared_observability import (
+    RunRecord,
+    ServiceRun,
+    append_record,
+    format_time_utc,
+    get_latest_run,
+    load_observability_config,
+    register_history_command,
+    resolve_log_level,
+)
+
 CHORES_BIN = ROOT / "bin" / "chores"
 DEFAULT_TIMEZONE = "Europe/Paris"
 DEFAULT_STATE_FILE = ".robin/chores-state.json"
 DEFAULT_CODEX_INIT_COMMAND = 'codex exec "Reply with exactly: ok"'
 SERVICE_NAME = "chores"
-LEVEL_MAP = {
-    "debug": "DEBUG",
-    "info": "INFO",
-    "warn": "WARNING",
-    "warning": "WARNING",
-    "error": "ERROR",
-}
 LOG_FORMAT = "[<level>{level}</level>] [{extra[time_utc]}] [{extra[service]}] [{extra[event]}] [{message}]"
 
 
@@ -67,15 +75,6 @@ def emit_debug(event: str, **fields: Any) -> None:
     log_event("DEBUG", event, **fields)
 
 
-def format_time_utc() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-
-
 def format_value(value: Any) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
@@ -91,9 +90,7 @@ def format_message(fields: dict[str, Any]) -> str:
 
 
 def configure_logger() -> None:
-    configured = LEVEL_MAP.get(
-        os.getenv("ROBIN_LOG_LEVEL", "info").strip().lower(), "INFO"
-    )
+    configured = resolve_log_level()
     logger.remove()
     logger.add(
         sys.stdout,
@@ -212,6 +209,8 @@ def summarize(text: str, limit: int = 1200) -> str:
 
 
 def build_status_payload(config: Config) -> dict[str, Any]:
+    observability = load_observability_config(ROOT)
+    last_run = get_latest_run(observability, SERVICE_NAME)
     timezone_ok = True
     timezone_error = ""
     try:
@@ -235,11 +234,18 @@ def build_status_payload(config: Config) -> dict[str, Any]:
             "codex_init_command": config.codex_init_command,
             "codex_init_command_binary": command_bin,
             "codex_init_command_binary_resolves": codex_command_resolves,
+            "run_ledger_path": str(observability.ledger_path),
+            "run_logs_dir": str(observability.logs_dir),
+            "telegram_configured": bool(
+                observability.telegram_bot_token and observability.telegram_chat_id
+            ),
         },
+        "last_run": last_run.to_dict() if last_run is not None else None,
+        "last_log_path": last_run.log_path if last_run is not None else None,
     }
 
 
-def run_once(config: Config) -> int:
+def run_once(config: Config) -> RunOutcome:
     chores = build_chores(config)
     now_local = now_in_timezone(config.timezone_name)
     state = load_state(config.state_file)
@@ -291,8 +297,18 @@ def run_once(config: Config) -> int:
             )
 
     save_state(config.state_file, state)
-    emit("run_completed", result="failed" if any_failed else "ok")
-    return 1 if any_failed else 0
+    result = "failed" if any_failed else "ok"
+    emit("run_completed", result=result)
+    return RunOutcome(
+        result=result,
+        exit_code=1 if any_failed else 0,
+        failure_code="chore_failed" if any_failed else None,
+        message="One or more chores failed" if any_failed else None,
+        metadata={
+            "timezone": config.timezone_name,
+            "total_chores": len(chores),
+        },
+    )
 
 
 @app.command()
@@ -315,15 +331,45 @@ def install_cron(
     typer.echo(f"{schedule} {command}")
 
 
+register_history_command(app, root=ROOT, service=SERVICE_NAME)
+
+
 @app.command()
 def run() -> None:
     """Evaluate all chores and execute due chores."""
+    observability = load_observability_config(ROOT)
+    service_run = ServiceRun(
+        observability,
+        service=SERVICE_NAME,
+        command="./bin/chores run",
+        log_level=resolve_log_level(),
+        log_format=LOG_FORMAT,
+    )
+    service_run.start()
     try:
-        code = run_once(load_config())
+        outcome = run_once(load_config())
     except ChoresError as exc:
         emit_error("run_failed", message=str(exc))
+        outcome = RunOutcome(
+            result="failed",
+            exit_code=1,
+            failure_code="run_failed",
+            message=str(exc),
+        )
+        service_run.finish(outcome)
         raise typer.Exit(code=1) from exc
-    raise typer.Exit(code=code)
+    except Exception as exc:  # noqa: BLE001 - final run failure must be recorded.
+        emit_error("run_failed", message=str(exc) or exc.__class__.__name__)
+        outcome = RunOutcome(
+            result="failed",
+            exit_code=1,
+            failure_code="internal_error",
+            message=str(exc) or exc.__class__.__name__,
+        )
+        service_run.finish(outcome)
+        raise
+    service_run.finish(outcome)
+    raise typer.Exit(code=outcome.exit_code)
 
 
 if __name__ == "__main__":
