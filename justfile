@@ -13,5 +13,8 @@ notion *args='--help':
 auto-coder *args='--help':
     ./bin/auto-coder "$@"
 
+chores *args='--help':
+    ./bin/chores "$@"
+
 dashboard *args='help':
     ./bin/dashboard "$@"

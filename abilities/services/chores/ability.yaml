@@ -1,0 +1,5 @@
+id: chores
+type: service
+runtime: python
+description: Cron-driven operational chore runner for Robin.
+command: ./bin/chores

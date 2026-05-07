@@ -28,6 +28,12 @@ web experience.
 An ability that provides long-running operational behavior for Robin. Services
 are grouped separately from connectors and apps even when they share runtimes.
 
+### Chore service
+
+A service ability that executes time-based operational actions on a cron cadence.
+It decides which chores are due at runtime and records run state for idempotent
+daily behavior.
+
 ### Auto-coder service
 
 The service ability that claims coding tasks from Notion, delegates repository

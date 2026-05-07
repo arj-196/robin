@@ -1,0 +1,12 @@
+[project]
+name = "robin-chores-service"
+version = "0.1.0"
+description = "Robin cron-driven chores service."
+requires-python = ">=3.10"
+dependencies = [
+  "typer>=0.20.0,<1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

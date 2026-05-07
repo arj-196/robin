@@ -13,6 +13,8 @@ folder.
 ├── .env.example
 ├── justfile
 ├── bin/
+│   ├── auto-coder
+│   ├── chores
 │   ├── dashboard
 │   └── notion
 └── abilities/
@@ -21,6 +23,8 @@ folder.
     ├── connectors/
     │   └── notion/
     └── services/
+        ├── auto-coder/
+        └── chores/
 ```
 
 ## Core Ideas
@@ -38,6 +42,8 @@ Use the checked-in shims directly:
 ```bash
 ./bin/notion --help
 ./bin/notion status
+./bin/auto-coder status
+./bin/chores status
 ./bin/dashboard help
 ./bin/dashboard serve
 ```
@@ -47,6 +53,8 @@ If you add `bin/` to your `PATH`, the same commands can be run as:
 ```bash
 notion --help
 notion list-pages --database-id your-database-id --json
+auto-coder status
+chores status
 dashboard status
 ```
 
@@ -83,6 +91,8 @@ cp .env.example .env
 - `notion`: a Python connector with a Typer CLI for inspecting status, listing
   database pages, and updating a page property.
 - `dashboard`: a TypeScript app with direct `status` and `serve` commands.
+- `auto-coder`: a Python service for Notion-driven coding automation.
+- `chores`: a Python service for cron-driven scheduled operational chores.
 
 ## Notion Terminology
 
