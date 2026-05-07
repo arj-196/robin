@@ -1318,7 +1318,7 @@ register_history_command(app, root=ROOT, service=SERVICE_NAME)
 @app.command("install-cron")
 def install_cron(
     schedule: str = typer.Option(
-        "*/5 * * * *", help="Cron schedule expression to print."
+        "*/15 * * * *", help="Cron schedule expression to print."
     ),
     drain: bool = typer.Option(
         False, "--drain", help="Print cron command that drains all pending Todo tasks."
