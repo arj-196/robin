@@ -1325,7 +1325,7 @@ def install_cron(
     ),
 ) -> None:
     """Print a crontab entry for this service without installing it."""
-    command = f"cd {ROOT} && {RUN_WITH_ENV_BIN} {AUTO_CODER_BIN} run"
+    command = f"cd {ROOT} && {RUN_WITH_ENV_BIN} {AUTO_CODER_BIN} run --drain"
     if drain:
         command = f"{command} --drain"
     typer.echo(f"{schedule} {command}")
