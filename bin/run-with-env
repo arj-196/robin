@@ -13,4 +13,6 @@ set -a
 . ./.env
 set +a
 
+# PATH is sourced from .env when defined there. This is intentional so cron
+# executions can use the same command resolution as interactive shells.
 exec "$@"

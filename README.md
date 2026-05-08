@@ -90,6 +90,17 @@ Local development uses a single root `.env` file for convenience.
 cp .env.example .env
 ```
 
+Cron runs with a minimal environment and may not include user-level install
+paths. If cron cannot find tools like `uv`, set `PATH` in `.env` to the same
+value you use interactively. `bin/run-with-env` treats `.env` values as
+authoritative, including `PATH`.
+
+Example:
+
+```bash
+PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+```
+
 Cron-invoked services also support shared observability settings:
 
 - `ROBIN_RUN_LEDGER_DIR`
