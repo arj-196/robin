@@ -1330,14 +1330,9 @@ def install_cron(
     schedule: str = typer.Option(
         "*/15 * * * *", help="Cron schedule expression to print."
     ),
-    drain: bool = typer.Option(
-        False, "--drain", help="Print cron command that drains all pending Todo tasks."
-    ),
 ) -> None:
     """Print a crontab entry for this service without installing it."""
-    command = f"cd {ROOT} && {AUTO_CODER_BIN} run"
-    if drain:
-        command = f"{command} --drain"
+    command = f"cd {ROOT} && {AUTO_CODER_BIN} run --drain"
     typer.echo(f"{schedule} {command}")
 
 

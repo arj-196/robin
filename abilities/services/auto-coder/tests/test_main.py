@@ -67,14 +67,13 @@ class AutoCoderTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn("*/15 * * * *", result.output)
         self.assertIn(f"cd {main.ROOT} &&", result.output)
+        self.assertIn(f"{main.AUTO_CODER_BIN} run --drain", result.output)
+
+    def test_install_cron_no_drain_flag_omits_drain(self) -> None:
+        result = CliRunner().invoke(main.app, ["install-cron", "--no-drain"])
+        self.assertEqual(result.exit_code, 0)
         self.assertIn(f"{main.AUTO_CODER_BIN} run", result.output)
         self.assertNotIn("--drain", result.output)
-
-    def test_install_cron_drain_flag_appends_drain(self) -> None:
-        result = CliRunner().invoke(main.app, ["install-cron", "--drain"])
-        self.assertEqual(result.exit_code, 0)
-        self.assertIn(f"{main.AUTO_CODER_BIN} run --drain", result.output)
-        self.assertEqual(result.output.count("--drain"), 1)
 
     def test_resolve_run_lock_path_uses_robin_home(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
