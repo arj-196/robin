@@ -224,6 +224,52 @@ class SharedObservabilityTests(unittest.TestCase):
 
         self.assertIn("Run log is missing:", str(ctx.exception))
 
+    def test_get_all_run_history_includes_multiple_services(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {
+                "ROBIN_RUN_LEDGER_DIR": str(Path(tmp) / ".robin"),
+                "ROBIN_LOG_RUNS_DIR": str(Path(tmp) / ".robin" / "logs"),
+            },
+            clear=False,
+        ):
+            config = shared.load_observability_config(ROOT)
+            self.append_finished_run(
+                config,
+                service="auto-coder",
+                run_id="a",
+                finished_at="2026-05-07T08:01:00Z",
+            )
+            self.append_finished_run(
+                config,
+                service="chores",
+                run_id="b",
+                finished_at="2026-05-07T08:02:00Z",
+            )
+            history = shared.get_all_run_history(config)
+        self.assertEqual([item.run_id for item in history], ["b", "a"])
+
+    def test_read_log_tail_text_truncates_large_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {
+                "ROBIN_RUN_LEDGER_DIR": str(Path(tmp) / ".robin"),
+                "ROBIN_LOG_RUNS_DIR": str(Path(tmp) / ".robin" / "logs"),
+            },
+            clear=False,
+        ):
+            config = shared.load_observability_config(ROOT)
+            record = self.append_finished_run(
+                config,
+                service="auto-coder",
+                run_id="tail",
+                finished_at="2026-05-07T08:02:00Z",
+                log_text="x" * 200,
+            )
+            tail = shared.read_log_tail_text(record, max_chars=50)
+        self.assertTrue(tail.startswith("...[truncated]"))
+        self.assertLessEqual(len(tail), 65)
+
 
 if __name__ == "__main__":
     unittest.main()

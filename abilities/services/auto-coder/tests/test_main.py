@@ -23,10 +23,47 @@ SPEC.loader.exec_module(main)
 
 
 class AutoCoderTests(unittest.TestCase):
+    def test_run_command_streaming_emits_codex_stream_events(self) -> None:
+        class FakePipe:
+            def __init__(self, lines: list[str]) -> None:
+                self._lines = lines
+                self._index = 0
+
+            def readline(self) -> str:
+                if self._index >= len(self._lines):
+                    return ""
+                line = self._lines[self._index]
+                self._index += 1
+                return line
+
+            def close(self) -> None:
+                return
+
+        class FakeProcess:
+            def __init__(self) -> None:
+                self.stdout = FakePipe(["out line\n"])
+                self.stderr = FakePipe(["err line\n"])
+                self.stdin = None
+
+            def wait(self) -> int:
+                return 0
+
+        with patch.object(main.subprocess, "Popen", return_value=FakeProcess()), patch.object(
+            main, "log_event"
+        ) as log_event_mock:
+            result = main.run_command_streaming(["codex", "exec"])
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("out line", result.stdout)
+        self.assertIn("err line", result.stderr)
+        logged_events = [call.args for call in log_event_mock.call_args_list]
+        self.assertIn(("INFO", "codex_stream"), [args[:2] for args in logged_events])
+        self.assertIn(("WARNING", "codex_stream"), [args[:2] for args in logged_events])
+
     def test_install_cron_uses_env_wrapper(self) -> None:
         result = CliRunner().invoke(main.app, ["install-cron"])
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("*/5 * * * *", result.output)
+        self.assertIn("*/15 * * * *", result.output)
         self.assertIn(f"cd {main.ROOT} &&", result.output)
         self.assertIn(
             f"{main.RUN_WITH_ENV_BIN} {main.AUTO_CODER_BIN} run", result.output

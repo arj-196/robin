@@ -15,11 +15,10 @@ folder.
 ├── bin/
 │   ├── auto-coder
 │   ├── chores
-│   ├── dashboard
 │   └── notion
 └── abilities/
     ├── apps/
-    │   └── dashboard/
+    │   └── history-dashboard/
     ├── connectors/
     │   └── notion/
     └── services/
@@ -46,8 +45,8 @@ Use the checked-in shims directly:
 ./bin/auto-coder history
 ./bin/chores status
 ./bin/chores history
-./bin/dashboard help
-./bin/dashboard serve
+./bin/history-dashboard help
+./bin/history-dashboard serve
 ```
 
 If you add `bin/` to your `PATH`, the same commands can be run as:
@@ -59,7 +58,7 @@ auto-coder status
 auto-coder history
 chores status
 chores history
-dashboard status
+history-dashboard status
 ```
 
 ## Metadata
@@ -108,11 +107,19 @@ Cron-invoked services also support shared observability settings:
 - `ROBIN_TELEGRAM_BOT_TOKEN`
 - `ROBIN_TELEGRAM_CHAT_ID`
 
+History dashboard auth can be configured with:
+
+- `HISTORY_DASHBOARD_AUTH_USERNAME`
+- `HISTORY_DASHBOARD_AUTH_PASSWORD`
+
+When both are set, the dashboard requires HTTP Basic Auth. If either is unset,
+auth is disabled.
+
 ## Sample Abilities
 
 - `notion`: a Python connector with a Typer CLI for inspecting status, listing
   database pages, and updating a page property.
-- `dashboard`: a TypeScript app with direct `status` and `serve` commands.
+- `history-dashboard`: a Next.js app for cross-service run history and logs.
 - `auto-coder`: a Python service for Notion-driven coding automation.
 - `chores`: a Python service for cron-driven scheduled operational chores.
 

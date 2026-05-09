@@ -300,6 +300,17 @@ def get_run_history(
     return records[: max(0, limit)]
 
 
+def get_all_run_history(
+    config: ObservabilityConfig, limit: int | None = None
+) -> list[RunRecord]:
+    prune_observability_artifacts(config)
+    records = [record for record in read_all_records(config) if record.event == "run_finished"]
+    records.sort(key=lambda item: item.finished_at or item.started_at, reverse=True)
+    if limit is None:
+        return records
+    return records[: max(0, limit)]
+
+
 def get_latest_run(config: ObservabilityConfig, service: str) -> RunRecord | None:
     history = get_run_history(config, service, limit=1)
     return history[0] if history else None
@@ -320,6 +331,13 @@ def read_log_text(record: RunRecord) -> str:
     if not path.exists():
         raise FileNotFoundError(record.log_path)
     return path.read_text(encoding="utf-8")
+
+
+def read_log_tail_text(record: RunRecord, max_chars: int = 12000) -> str:
+    text = read_log_text(record)
+    if len(text) <= max_chars:
+        return text
+    return "...[truncated]\n" + text[-max_chars:]
 
 
 def print_run_history(

@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
-pnpm --dir abilities/apps/dashboard exec node --experimental-strip-types src/index.ts "$@"

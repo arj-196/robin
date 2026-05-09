@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WEB_DIR="$ROOT/abilities/apps/history-dashboard/web"
+
+if [[ ! -d "$WEB_DIR" ]]; then
+  echo "history-dashboard web app not found: $WEB_DIR" >&2
+  exit 1
+fi
+
+ensure_next_available() {
+  if [[ -x "$WEB_DIR/node_modules/.bin/next" ]]; then
+    return
+  fi
+
+  echo "Installing history-dashboard web dependencies..." >&2
+  (cd "$WEB_DIR" && npm install)
+}
+
+MODE="${1:-help}"
+case "$MODE" in
+  status)
+    PORT="${HISTORY_DASHBOARD_PORT:-3000}"
+    cat <<JSON
+{
+  "ability": "history-dashboard",
+  "frontend": "nextjs",
+  "port": ${PORT},
+  "status": "ready"
+}
+JSON
+    ;;
+  serve)
+    shift || true
+    PORT="${HISTORY_DASHBOARD_PORT:-3000}"
+    ensure_next_available
+    cd "$WEB_DIR"
+    exec npm run dev -- --port "$PORT" "$@"
+    ;;
+  help|--help|-h)
+    cat <<'TEXT'
+Usage: ./bin/history-dashboard <mode>
+
+Modes:
+  status    Print health payload JSON
+  serve     Start Next.js dashboard
+  help      Show this help
+TEXT
+    ;;
+  *)
+    echo "Unknown mode: $MODE" >&2
+    exit 1
+    ;;
+esac

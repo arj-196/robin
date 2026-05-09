@@ -49,6 +49,11 @@ event and one finished event for each cron-invoked service run.
 The dedicated log file emitted for one service execution. A run log is linked
 to its corresponding run ledger entry through the shared run identifier.
 
+### History dashboard
+
+The app ability that presents cross-service run history, per-run details, and
+associated run logs from local observability artifacts.
+
 ### Manifest
 
 The lightweight machine-readable metadata for a single ability. It defines basic

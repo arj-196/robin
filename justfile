@@ -16,5 +16,5 @@ auto-coder *args='--help':
 chores *args='--help':
     ./bin/chores "$@"
 
-dashboard *args='help':
-    ./bin/dashboard "$@"
+history-dashboard *args='help':
+    ./bin/history-dashboard "$@"

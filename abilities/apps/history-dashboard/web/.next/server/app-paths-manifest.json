@@ -1,0 +1,5 @@
+{
+  "/api/log-tail/route": "app/api/log-tail/route.js",
+  "/api/history/route": "app/api/history/route.js",
+  "/page": "app/page.js"
+}

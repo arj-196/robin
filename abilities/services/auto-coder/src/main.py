@@ -313,21 +313,26 @@ def run_command_streaming(
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
 
-    def forward_stream(pipe: Any, sink: Any, chunks: list[str]) -> None:
+    def forward_stream(
+        pipe: Any, sink: Any, chunks: list[str], stream_name: str, level: str
+    ) -> None:
         for line in iter(pipe.readline, ""):
             chunks.append(line)
             sink.write(line)
             sink.flush()
+            line_text = line.rstrip("\n")
+            if line_text:
+                log_event(level, "codex_stream", stream=stream_name, line=line_text)
         pipe.close()
 
     stdout_thread = threading.Thread(
         target=forward_stream,
-        args=(process.stdout, sys.stdout, stdout_chunks),
+        args=(process.stdout, sys.stdout, stdout_chunks, "stdout", "DEBUG"),
         daemon=True,
     )
     stderr_thread = threading.Thread(
         target=forward_stream,
-        args=(process.stderr, sys.stderr, stderr_chunks),
+        args=(process.stderr, sys.stderr, stderr_chunks, "stderr", "DEBUG"),
         daemon=True,
     )
     stdout_thread.start()

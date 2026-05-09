@@ -1,5 +1,0 @@
-id: dashboard
-type: app
-runtime: typescript
-description: Direct dashboard CLI for Robin.
-command: ./bin/dashboard

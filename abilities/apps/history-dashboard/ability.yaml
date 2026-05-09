@@ -1,0 +1,5 @@
+id: history-dashboard
+type: app
+runtime: node
+description: Next.js dashboard for cross-service run history and logs.
+command: ./bin/history-dashboard

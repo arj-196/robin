@@ -64,6 +64,9 @@ Each cron execution also creates:
 - a `run ledger` entry at `<ROBIN_HOME>/<ROBIN_RUN_LEDGER_DIR>/run-ledger.jsonl`
 - a dedicated `run log` file at `<ROBIN_HOME>/<ROBIN_LOG_RUNS_DIR>/auto-coder/<YYYY-MM-DD>-<run_id>.log`
 
+Codex subprocess stdout/stderr is streamed into the same run log with
+`codex_stream` events for end-to-end debugging.
+
 Use `./bin/auto-coder history --limit 10` to inspect recent finished runs.
 Add `--show-log` to print the stored log contents for those runs.
 
