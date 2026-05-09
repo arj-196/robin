@@ -94,6 +94,39 @@ run_docker() {
   exec docker "${docker_args[@]}" "$image" python abilities/services/chores/src/main.py "$@"
 }
 
+exec_docker() {
+  load_env
+
+  local image="robin-chores"
+  local dockerfile="$ROOT/abilities/services/chores/Dockerfile"
+  local robin_home="${ROBIN_HOME:-.robin}"
+  local host_robin_home
+  host_robin_home="$(resolve_path "$robin_home")"
+  mkdir -p "$host_robin_home"
+
+  local docker_args=(
+    run
+    --rm
+    -it
+    --volume "$ROOT:$CANONICAL_REPO:ro"
+    --volume "$host_robin_home:$CANONICAL_ROBIN_HOME:rw"
+    --volume "$HOME/.codex:/root/.codex:rw"
+    --workdir "$CANONICAL_REPO"
+  )
+  append_env_file_vars docker_args
+  docker_args+=(
+    --env "ROBIN_HOME=$CANONICAL_ROBIN_HOME"
+    --env "HOME=/root"
+    --env "ROBIN_CONTAINER_DIRECT_PYTHON=1"
+  )
+
+  ensure_image "$image" "$dockerfile"
+  if [[ $# -eq 0 ]]; then
+    exec docker "${docker_args[@]}" "$image" /bin/sh
+  fi
+  exec docker "${docker_args[@]}" "$image" "$@"
+}
+
 if [[ "${1:-}" == "install-cron" ]]; then
   shift
   schedule="*/5 8-10 * * *"
@@ -115,6 +148,11 @@ if [[ "${1:-}" == "install-cron" ]]; then
   done
   printf '%s cd %s && %s/bin/chores run\n' "$schedule" "$ROOT" "$ROOT"
   exit
+fi
+
+if [[ "${1:-}" == "exec" ]]; then
+  shift
+  exec_docker "$@"
 fi
 
 run_docker "$@"

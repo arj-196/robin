@@ -1371,7 +1371,8 @@ def run(
         observability,
         service=SERVICE_NAME,
         command=command,
-        log_level=resolve_log_level(),
+        # Persist full run diagnostics to file even when console verbosity is higher.
+        log_level="DEBUG",
         log_format=LOG_FORMAT,
     )
     service_run.start()

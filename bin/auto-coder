@@ -122,6 +122,44 @@ run_docker() {
   exec docker "${docker_args[@]}" "$image" python abilities/services/auto-coder/src/main.py "$@"
 }
 
+exec_docker() {
+  load_env
+
+  local image="robin-auto-coder"
+  local dockerfile="$ROOT/abilities/services/auto-coder/Dockerfile"
+  local robin_home="${ROBIN_HOME:-.robin}"
+  local apps_root="${AUTO_CODER_APPS_ROOT:-~/apps}"
+  local host_robin_home
+  local host_apps_root
+  host_robin_home="$(resolve_path "$robin_home")"
+  host_apps_root="$(resolve_path "$apps_root")"
+  mkdir -p "$host_robin_home" "$host_apps_root"
+
+  local docker_args=(
+    run
+    --rm
+    -it
+    --volume "$ROOT:$CANONICAL_REPO:ro"
+    --volume "$host_robin_home:$CANONICAL_ROBIN_HOME:rw"
+    --volume "$HOME/.codex:/root/.codex:rw"
+    --workdir "$CANONICAL_REPO"
+  )
+  append_env_file_vars docker_args
+  docker_args+=(
+    --env "ROBIN_HOME=$CANONICAL_ROBIN_HOME"
+    --env "HOME=/root"
+    --env "ROBIN_CONTAINER_DIRECT_PYTHON=1"
+    --env "AUTO_CODER_APPS_ROOT=$CANONICAL_APPS_ROOT"
+    --volume "$host_apps_root:$CANONICAL_APPS_ROOT:rw"
+  )
+
+  ensure_image "$image" "$dockerfile"
+  if [[ $# -eq 0 ]]; then
+    exec docker "${docker_args[@]}" "$image" /bin/sh
+  fi
+  exec docker "${docker_args[@]}" "$image" "$@"
+}
+
 if [[ "${1:-}" == "install-cron" ]]; then
   shift
   schedule="*/15 * * * *"
@@ -159,6 +197,11 @@ if [[ "${1:-}" == "build" ]]; then
   load_env
   build_image "$@"
   exit
+fi
+
+if [[ "${1:-}" == "exec" ]]; then
+  shift
+  exec_docker "$@"
 fi
 
 run_docker "$@"
