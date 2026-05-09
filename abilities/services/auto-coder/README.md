@@ -43,6 +43,7 @@ Optional field-name configuration:
 - `AUTO_CODER_PROJECT_PROPERTY`, defaults to `Project`
 - `AUTO_CODER_ERROR_LOG_PROPERTY`, defaults to `Error Log`
 - `AUTO_CODER_CODEX_MODEL`, defaults to `gpt-5.3-codex`
+- `AUTO_CODER_CODEX_SANDBOX`, defaults to `workspace-write`
 - `AUTO_CODER_GIT_COMPLETION_MODE`, defaults to `auto_merge_main`
 - `OPENROUTER_API_KEY`, used to generate diff-aware commit messages
 - `AUTO_CODER_COMMIT_MODEL`, defaults to `openrouter/gpt-oss-120b`
@@ -90,5 +91,5 @@ Tasks missing any required section are marked `Blocked` with
 
 The service resolves `Project` to `AUTO_CODER_APPS_ROOT/<Project>`, rejects paths that
 escape `AUTO_CODER_APPS_ROOT`, requires a clean local `main` branch, and invokes Codex with
-`--sandbox workspace-write`. For this POC, Codex's reported verification is
+`--sandbox <AUTO_CODER_CODEX_SANDBOX>`. For this POC, Codex's reported verification is
 trusted; the service does not rerun verification commands.

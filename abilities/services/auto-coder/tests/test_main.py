@@ -95,6 +95,7 @@ class AutoCoderTests(unittest.TestCase):
             project_property="Project",
             error_log_property="Error Log",
             codex_model="gpt-5.3-codex",
+            codex_sandbox="workspace-write",
             git_completion_mode="auto_merge_main",
             openrouter_api_key="test-key",
             commit_model="openrouter/gpt-oss-120b",
@@ -278,7 +279,9 @@ class AutoCoderTests(unittest.TestCase):
         )
 
     def test_build_codex_command_uses_expected_boundary(self) -> None:
-        command = main.build_codex_command(Path("/tmp/apps/sample"), "gpt-5.3-codex")
+        command = main.build_codex_command(
+            Path("/tmp/apps/sample"), "gpt-5.3-codex", "workspace-write"
+        )
         self.assertEqual(command[:4], ["codex", "exec", "-C", "/tmp/apps/sample"])
         self.assertIn("workspace-write", command)
 
@@ -356,6 +359,7 @@ class AutoCoderTests(unittest.TestCase):
                 project_property="Project",
                 error_log_property="Error Log",
                 codex_model="gpt-5.3-codex",
+                codex_sandbox="workspace-write",
                 git_completion_mode="auto_merge_main",
                 openrouter_api_key="",
                 commit_model="openrouter/gpt-oss-120b",
@@ -376,6 +380,7 @@ class AutoCoderTests(unittest.TestCase):
                     project_property="Project",
                     error_log_property="Error Log",
                     codex_model="gpt-5.3-codex",
+                    codex_sandbox="workspace-write",
                     git_completion_mode="auto_merge_main",
                     openrouter_api_key="",
                     commit_model="openrouter/gpt-oss-120b",

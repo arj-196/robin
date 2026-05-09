@@ -52,6 +52,13 @@ docker_image_exists() {
   docker image inspect "$1" >/dev/null 2>&1
 }
 
+append_auto_coder_build_args() {
+  local target_args="$1"
+  eval "$target_args+=(--build-arg \"CODEX_VERSION=$CODEX_VERSION\")"
+  eval "$target_args+=(--build-arg \"AUTO_CODER_GITHUB_SSH_PRIVATE_KEY=${AUTO_CODER_GITHUB_SSH_PRIVATE_KEY-}\")"
+  eval "$target_args+=(--build-arg \"AUTO_CODER_GITHUB_SSH_PUBLIC_KEY=${AUTO_CODER_GITHUB_SSH_PUBLIC_KEY-}\")"
+}
+
 ensure_image() {
   local image="$1"
   local dockerfile="$2"
@@ -59,8 +66,23 @@ ensure_image() {
     return
   fi
 
+  local build_args=()
+  append_auto_coder_build_args build_args
   docker build \
-    --build-arg "CODEX_VERSION=$CODEX_VERSION" \
+    "${build_args[@]}" \
+    -t "$image" \
+    -f "$dockerfile" \
+    "$ROOT"
+}
+
+build_image() {
+  local image="robin-auto-coder"
+  local dockerfile="$ROOT/abilities/services/auto-coder/Dockerfile"
+  local build_args=()
+  append_auto_coder_build_args build_args
+  docker build \
+    "${build_args[@]}" \
+    "$@" \
     -t "$image" \
     -f "$dockerfile" \
     "$ROOT"
@@ -129,6 +151,13 @@ if [[ "${1:-}" == "install-cron" ]]; then
     command="$command --drain"
   fi
   printf '%s %s\n' "$schedule" "$command"
+  exit
+fi
+
+if [[ "${1:-}" == "build" ]]; then
+  shift
+  load_env
+  build_image "$@"
   exit
 fi
 

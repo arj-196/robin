@@ -59,6 +59,7 @@ class Config:
     project_property: str
     error_log_property: str
     codex_model: str
+    codex_sandbox: str
     git_completion_mode: str
     openrouter_api_key: str
     commit_model: str
@@ -218,6 +219,10 @@ def load_config() -> Config:
         or "Error Log",
         codex_model=os.getenv("AUTO_CODER_CODEX_MODEL", "gpt-5.3-codex").strip()
         or "gpt-5.3-codex",
+        codex_sandbox=os.getenv(
+            "AUTO_CODER_CODEX_SANDBOX", "workspace-write"
+        ).strip()
+        or "workspace-write",
         git_completion_mode=os.getenv(
             "AUTO_CODER_GIT_COMPLETION_MODE", "auto_merge_main"
         ).strip()
@@ -960,7 +965,7 @@ Full Notion body:
 """
 
 
-def build_codex_command(repo: Path, model: str) -> list[str]:
+def build_codex_command(repo: Path, model: str, sandbox: str) -> list[str]:
     return [
         "codex",
         "exec",
@@ -969,7 +974,7 @@ def build_codex_command(repo: Path, model: str) -> list[str]:
         "--model",
         model,
         "--sandbox",
-        "workspace-write",
+        sandbox,
     ]
 
 
@@ -996,7 +1001,7 @@ def codex_report_is_usable(stdout: str, stderr: str) -> bool:
 
 def run_codex(repo: Path, config: Config, prompt: str) -> None:
     result = run_command(
-        build_codex_command(repo, config.codex_model),
+        build_codex_command(repo, config.codex_model, config.codex_sandbox),
         cwd=repo,
         input_text=prompt,
         check=False,
@@ -1293,6 +1298,7 @@ def build_status_payload(config: Config) -> dict[str, Any]:
             "apps_root_exists": config.apps_root.exists(),
             "git_completion_mode": config.git_completion_mode,
             "codex_model": config.codex_model,
+            "codex_sandbox": config.codex_sandbox,
             "commit_model": config.commit_model,
             "openrouter_api_key_configured": bool(config.openrouter_api_key),
             "commit_max_context_tokens": config.commit_max_context_tokens,
