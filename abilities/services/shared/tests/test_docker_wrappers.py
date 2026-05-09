@@ -105,9 +105,32 @@ exit 0
 
         self.assertEqual(result.returncode, 0, result.stderr)
         log = result.docker_log  # type: ignore[attr-defined]
-        self.assertIn("robin-history-dashboard npm run start -- --hostname 0.0.0.0 --port 4242", log)
+        self.assertIn("robin-history-dashboard ./node_modules/.bin/next start --hostname 0.0.0.0 --port 4242", log)
         self.assertIn("--env ROBIN_HOME=/robin-home", log)
         self.assertIn("--publish 4242:4242", log)
+        self.assertNotIn("--detach", log)
+        self.assertNotIn("--name robin-history-dashboard", log)
+        self.assertIn(":/robin-home:ro", log)
+        self.assertNotIn("/var/run/docker.sock", log)
+
+    def test_history_dashboard_serve_background_detaches_named_container(self) -> None:
+        result = self.run_with_fake_docker(
+            "history-dashboard",
+            ["serve", "--background"],
+            "ROBIN_HOME={tmp}/robin-home\nHISTORY_DASHBOARD_PORT=4242\n",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "History dashboard is running in the background on http://localhost:4242",
+            result.stdout,
+        )
+        self.assertIn("Stop it with: docker stop robin-history-dashboard", result.stdout)
+        log = result.docker_log  # type: ignore[attr-defined]
+        self.assertIn("robin-history-dashboard ./node_modules/.bin/next start --hostname 0.0.0.0 --port 4242", log)
+        self.assertIn("--publish 4242:4242", log)
+        self.assertIn("--detach", log)
+        self.assertIn("--name robin-history-dashboard", log)
         self.assertIn(":/robin-home:ro", log)
         self.assertNotIn("/var/run/docker.sock", log)
 

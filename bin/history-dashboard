@@ -8,13 +8,16 @@ CANONICAL_ROBIN_HOME="/robin-home"
 
 usage() {
   cat <<'TEXT'
-Usage: ./bin/history-dashboard <mode>
+Usage: ./bin/history-dashboard <mode> [options]
 
 Modes:
   build     Build the Docker image
   status    Print health payload JSON
   serve     Start production Next.js dashboard in Docker
   help      Show this help
+
+Serve options:
+  --background, -d  Run the dashboard in a detached Docker container
 TEXT
 }
 
@@ -78,6 +81,7 @@ ensure_image() {
 run_docker() {
   local mode="${1:-help}"
   shift || true
+  local background=0
 
   case "$mode" in
     help|--help|-h)
@@ -85,6 +89,30 @@ run_docker() {
       ;;
     build|status|serve)
       load_env
+
+      if [[ "$mode" == "serve" ]]; then
+        local passthrough_args=()
+        while (($#)); do
+          case "$1" in
+            --background|-d)
+              background=1
+              shift
+              ;;
+            --)
+              shift
+              passthrough_args+=("$@")
+              break
+              ;;
+            *)
+              passthrough_args+=("$1")
+              shift
+              ;;
+          esac
+        done
+        set +u
+        set -- "${passthrough_args[@]}"
+        set -u
+      fi
 
       local image="robin-history-dashboard"
       local dockerfile="$ROOT/abilities/apps/history-dashboard/Dockerfile"
@@ -112,6 +140,12 @@ run_docker() {
       )
       if [[ "$mode" == "serve" ]]; then
         docker_args+=(--publish "$port:$port")
+        if ((background)); then
+          docker_args+=(
+            --detach
+            --name robin-history-dashboard
+          )
+        fi
       fi
       docker_args+=(
         --volume "$host_robin_home:$CANONICAL_ROBIN_HOME:ro"
@@ -127,6 +161,15 @@ run_docker() {
         exec docker "${docker_args[@]}" \
           "$image" \
           node /usr/local/bin/history-dashboard-status.js
+      fi
+
+      if ((background)); then
+        docker "${docker_args[@]}" \
+          "$image" \
+          ./node_modules/.bin/next start --hostname 0.0.0.0 --port "$port" "$@"
+        echo "History dashboard is running in the background on http://localhost:$port"
+        echo "Stop it with: docker stop robin-history-dashboard"
+        return
       fi
 
       exec docker "${docker_args[@]}" \

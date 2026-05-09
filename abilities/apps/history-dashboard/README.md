@@ -10,6 +10,7 @@ by default.
 ./bin/history-dashboard help
 ./bin/history-dashboard status
 ./bin/history-dashboard serve
+./bin/history-dashboard serve --background
 ```
 
 ## Environment
@@ -28,6 +29,7 @@ ROBIN_LOG_RUNS_DIR=logs
 
 - `status` prints a lightweight health payload.
 - `serve` starts the production Next.js server in a foreground Docker container.
+- `serve --background` starts it as the detached `robin-history-dashboard` Docker container. Stop it with `docker stop robin-history-dashboard`.
 - The first Dockerized run builds the `robin-history-dashboard` image if it is missing.
 - `ROBIN_HOME` is mounted read-only at `/robin-home` inside the container.
 - The dashboard is read-only and shows cross-service run history plus run logs.
