@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any
 from urllib import error, request
 
@@ -9,6 +10,10 @@ import typer
 
 NOTION_VERSION = "2022-06-28"
 NOTION_BASE_URL = "https://api.notion.com/v1"
+NOTION_MAX_RETRIES = 4
+NOTION_RETRY_INITIAL_DELAY_SECONDS = 0.5
+NOTION_RETRY_MAX_DELAY_SECONDS = 4.0
+NOTION_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 app = typer.Typer(
     help="Direct CLI for the Robin Notion connector.", no_args_is_help=True
@@ -80,26 +85,64 @@ def notion_request(
     req.add_header("Notion-Version", NOTION_VERSION)
     req.add_header("Content-Type", "application/json")
 
-    try:
-        with request.urlopen(req, timeout=30) as response:
-            data = response.read().decode("utf-8")
-            return json.loads(data) if data else {}
-    except error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            parsed = {}
+    delay_seconds = NOTION_RETRY_INITIAL_DELAY_SECONDS
+    last_error: NotionAPIError | None = None
 
-        raise NotionAPIError(
-            status=exc.code,
-            code=str(parsed.get("code") or "http_error"),
-            message=str(parsed.get("message") or raw or "Notion API request failed"),
-        ) from exc
-    except error.URLError as exc:
-        raise NotionAPIError(
-            status=503, code="network_error", message=str(exc.reason)
-        ) from exc
+    for attempt in range(NOTION_MAX_RETRIES + 1):
+        try:
+            with request.urlopen(req, timeout=30) as response:
+                data = response.read().decode("utf-8")
+                return json.loads(data) if data else {}
+        except error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                parsed = {}
+
+            last_error = NotionAPIError(
+                status=exc.code,
+                code=str(parsed.get("code") or "http_error"),
+                message=str(
+                    parsed.get("message") or raw or "Notion API request failed"
+                ),
+            )
+            should_retry = exc.code in NOTION_RETRYABLE_STATUS_CODES
+            if should_retry and attempt < NOTION_MAX_RETRIES:
+                retry_after_header = exc.headers.get("Retry-After")
+                if retry_after_header:
+                    try:
+                        delay_seconds = min(
+                            float(retry_after_header),
+                            NOTION_RETRY_MAX_DELAY_SECONDS,
+                        )
+                    except ValueError:
+                        pass
+                time.sleep(delay_seconds)
+                delay_seconds = min(
+                    delay_seconds * 2, NOTION_RETRY_MAX_DELAY_SECONDS
+                )
+                continue
+            raise last_error from exc
+        except error.URLError as exc:
+            last_error = NotionAPIError(
+                status=503, code="network_error", message=str(exc.reason)
+            )
+            if attempt < NOTION_MAX_RETRIES:
+                time.sleep(delay_seconds)
+                delay_seconds = min(
+                    delay_seconds * 2, NOTION_RETRY_MAX_DELAY_SECONDS
+                )
+                continue
+            raise last_error from exc
+
+    if last_error is not None:
+        raise last_error
+    raise NotionAPIError(
+        status=503,
+        code="network_error",
+        message="Notion request failed after retries",
+    )
 
 
 def extract_page_title(page: dict[str, Any]) -> str:
