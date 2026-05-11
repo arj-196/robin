@@ -25,14 +25,14 @@ export type TimelineDatum = {
   color: string;
 };
 
-export type TimelineRange = {
-  startMs: number;
-  endMs: number;
-};
-
 export const DEFAULT_HISTORY_LOOKBACK_DAYS = 7;
 export const MIN_HISTORY_LOOKBACK_DAYS = 1;
 export const MAX_HISTORY_LOOKBACK_DAYS = 90;
+
+export type DateRangeFilter = {
+  from: string;
+  until: string;
+};
 
 const SERVICE_COLORS: Record<string, string> = {
   chores: "#d97706",
@@ -99,44 +99,44 @@ export function buildTimelineData(records: RunRecord[]): TimelineDatum[] {
     .sort((left, right) => left.timestamp - right.timestamp);
 }
 
-export function deriveTimelineRangeFromIndexes(
-  data: TimelineDatum[],
-  startIndex: number,
-  endIndex: number,
-): TimelineRange | null {
-  if (!data.length) {
+function parseCalendarDate(value: string, boundary: "start" | "end"): number | null {
+  if (!value) {
     return null;
   }
 
-  const safeStartIndex = Math.max(0, Math.min(startIndex, data.length - 1));
-  const safeEndIndex = Math.max(0, Math.min(endIndex, data.length - 1));
-  const left = data[Math.min(safeStartIndex, safeEndIndex)];
-  const right = data[Math.max(safeStartIndex, safeEndIndex)];
-
-  if (!left || !right) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
     return null;
   }
 
-  return {
-    startMs: left.timestamp,
-    endMs: right.timestamp,
-  };
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+  const day = Number(dayText);
+  const date =
+    boundary === "start"
+      ? new Date(year, monthIndex, day, 0, 0, 0, 0)
+      : new Date(year, monthIndex, day, 23, 59, 59, 999);
+  const timestamp = date.getTime();
+
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-export function isFullTimelineRange(
-  data: TimelineDatum[],
-  startIndex: number,
-  endIndex: number,
-): boolean {
-  if (data.length <= 1) {
-    return true;
+function resolveDateRangeBounds(range: DateRangeFilter): { startMs: number; endMs: number } | null {
+  const [startDate, endDate] = range.from <= range.until ? [range.from, range.until] : [range.until, range.from];
+  const fromMs = parseCalendarDate(startDate, "start");
+  const untilMs = parseCalendarDate(endDate, "end");
+
+  if (fromMs === null || untilMs === null) {
+    return null;
   }
 
-  return startIndex <= 0 && endIndex >= data.length - 1;
+  return { startMs: fromMs, endMs: untilMs };
 }
 
-export function filterRecordsByTimelineRange(records: RunRecord[], range: TimelineRange | null): RunRecord[] {
-  if (!range) {
+export function filterRecordsByDateRange(records: RunRecord[], range: DateRangeFilter): RunRecord[] {
+  const bounds = resolveDateRangeBounds(range);
+  if (!bounds) {
     return records;
   }
 
@@ -145,6 +145,6 @@ export function filterRecordsByTimelineRange(records: RunRecord[], range: Timeli
     if (timestamp === null) {
       return false;
     }
-    return timestamp >= range.startMs && timestamp <= range.endMs;
+    return timestamp >= bounds.startMs && timestamp <= bounds.endMs;
   });
 }

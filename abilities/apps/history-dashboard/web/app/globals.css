@@ -51,6 +51,8 @@ select {
 }
 
 .dashboard-header {
+  position: relative;
+  z-index: 10;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -91,6 +93,8 @@ select {
 }
 
 .filter-bar {
+  position: relative;
+  z-index: 11;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
@@ -116,6 +120,128 @@ select {
   color: var(--text);
 }
 
+.filter-date-range {
+  gap: 8px;
+}
+
+.date-range-picker {
+  position: relative;
+}
+
+.date-range-trigger,
+.date-nav-button,
+.date-picker-action,
+.date-cell {
+  border: 1px solid var(--border);
+  background: var(--panel-muted);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.date-range-trigger {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.date-range-trigger.open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(23, 92, 211, 0.12);
+}
+
+.date-range-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(320px, 100vw - 48px);
+  padding: 14px;
+  border: 1px solid rgba(188, 199, 214, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow);
+}
+
+.date-range-popover-header,
+.date-range-popover-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.date-range-popover-header strong {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.date-range-guidance {
+  margin: 10px 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.date-nav-button,
+.date-picker-action {
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.date-picker-action.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.date-grid-weekdays,
+.date-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.date-grid-weekdays {
+  margin-bottom: 6px;
+}
+
+.date-grid-weekdays span {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.date-cell {
+  min-height: 36px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.date-cell.outside-month {
+  color: #97a3b6;
+  background: #f8fafc;
+}
+
+.date-cell.in-range {
+  border-color: #b7cdf6;
+  background: #e8f0ff;
+}
+
+.date-cell.range-start,
+.date-cell.range-end {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
 .banner-error,
 .inline-error {
   margin: 0;
@@ -123,6 +249,8 @@ select {
 }
 
 .timeline-panel {
+  position: relative;
+  z-index: 1;
   border: 1px solid rgba(188, 199, 214, 0.7);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.92);
@@ -133,7 +261,6 @@ select {
   gap: 14px;
 }
 
-.timeline-panel-header,
 .timeline-status-row,
 .timeline-legend {
   display: flex;
@@ -142,22 +269,8 @@ select {
   gap: 10px;
 }
 
-.timeline-panel-header {
-  justify-content: space-between;
-}
-
-.timeline-panel-header h2 {
-  margin: 0;
-}
-
-.timeline-panel-header p {
-  margin: 4px 0 0;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
 .timeline-legend {
-  justify-content: flex-end;
+  flex: 1 1 auto;
 }
 
 .timeline-legend-item,
@@ -184,39 +297,21 @@ select {
 }
 
 .timeline-status-row {
-  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
 }
 
 .timeline-range-chip {
   padding: 7px 12px;
   background: var(--panel-muted);
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .timeline-range-chip.active {
   background: var(--accent-soft);
   color: var(--accent);
-}
-
-.timeline-reset-button {
-  border: 1px solid var(--border);
-  background: #ffffff;
-  color: var(--text);
-  border-radius: 10px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.timeline-reset-button:hover {
-  background: var(--panel-muted);
-}
-
-.timeline-reset-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .timeline-chart-shell {
@@ -543,14 +638,19 @@ select {
     min-width: 100%;
   }
 
-  .timeline-panel-header,
+  .date-range-popover {
+    left: 0;
+    right: auto;
+    width: min(100%, 320px);
+  }
+
   .timeline-status-row,
   .timeline-legend {
     align-items: flex-start;
   }
 
   .timeline-status-row {
-    flex-direction: column;
+    flex-wrap: wrap;
   }
 
   .timeline-legend {

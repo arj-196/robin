@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTimelineData,
-  deriveTimelineRangeFromIndexes,
-  filterRecordsByTimelineRange,
+  filterRecordsByDateRange,
   normalizeLookbackInput,
   type RunRecord,
 } from "./history-timeline";
@@ -40,21 +39,46 @@ describe("buildTimelineData", () => {
   });
 });
 
-describe("timeline range helpers", () => {
-  it("derives an inclusive range from brush indexes and filters records against it", () => {
+describe("date range filtering", () => {
+  it("filters records inclusively across the selected start and end dates", () => {
     const records = [
       buildRecord({ run_id: "first", started_at: "2026-05-10T08:00:00.000Z" }),
       buildRecord({ run_id: "second", started_at: "2026-05-10T10:00:00.000Z" }),
-      buildRecord({ run_id: "third", started_at: "2026-05-10T12:00:00.000Z" }),
+      buildRecord({ run_id: "third", started_at: "2026-05-11T12:00:00.000Z" }),
     ];
 
-    const data = buildTimelineData(records);
-    const range = deriveTimelineRangeFromIndexes(data, 0, 1);
-
-    expect(filterRecordsByTimelineRange(records, range).map((record) => record.run_id)).toEqual([
+    expect(filterRecordsByDateRange(records, { from: "2026-05-10", until: "2026-05-10" }).map((record) => record.run_id))
+      .toEqual([
       "first",
       "second",
     ]);
+  });
+
+  it("does not filter until both dates are selected", () => {
+    const records = [
+      buildRecord({ run_id: "chores-1", service: "chores", started_at: "2026-05-10T08:00:00.000Z" }),
+      buildRecord({ run_id: "auto-1", service: "auto-coder", started_at: "2026-05-10T09:00:00.000Z" }),
+      buildRecord({ run_id: "chores-2", service: "chores", started_at: "2026-05-10T10:00:00.000Z" }),
+      buildRecord({ run_id: "chores-3", service: "chores", started_at: "2026-05-11T11:00:00.000Z" }),
+    ];
+
+    expect(filterRecordsByDateRange(records, { from: "2026-05-11", until: "" }).map((record) => record.run_id)).toEqual(
+      records.map((record) => record.run_id),
+    );
+  });
+
+  it("normalizes reverse-ordered date selections", () => {
+    const records = [
+      buildRecord({ run_id: "chores-1", service: "chores", started_at: "2026-05-09T08:00:00.000Z" }),
+      buildRecord({ run_id: "auto-1", service: "auto-coder", started_at: "2026-05-10T09:00:00.000Z" }),
+      buildRecord({ run_id: "chores-2", service: "chores", started_at: "2026-05-11T10:00:00.000Z" }),
+    ];
+
+    expect(filterRecordsByDateRange(records, { from: "2026-05-11", until: "2026-05-10" }).map((record) => record.run_id))
+      .toEqual([
+        "auto-1",
+        "chores-2",
+      ]);
   });
 });
 

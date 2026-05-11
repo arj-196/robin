@@ -1,31 +1,20 @@
 "use client";
 
+import React from "react";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
-import {
-  Bar,
-  BarChart,
-  Brush,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import {
   buildTimelineData,
   DEFAULT_HISTORY_LOOKBACK_DAYS,
-  deriveTimelineRangeFromIndexes,
-  filterRecordsByTimelineRange,
+  filterRecordsByDateRange,
   getServiceColor,
-  isFullTimelineRange,
   MAX_HISTORY_LOOKBACK_DAYS,
   MIN_HISTORY_LOOKBACK_DAYS,
   normalizeLookbackInput,
+  type DateRangeFilter,
   type RunRecord,
   type TimelineDatum,
-  type TimelineRange,
 } from "./history-timeline";
 
 type LogTailResponse = {
@@ -45,10 +34,110 @@ type HistoryResponse = {
   records: RunRecord[];
 };
 
-type BrushRange = {
-  startIndex: number;
-  endIndex: number;
+type CalendarDay = {
+  iso: string;
+  dayOfMonth: number;
+  isCurrentMonth: boolean;
 };
+
+function parseIsoDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const monthIndex = Number(monthText) - 1;
+  const day = Number(dayText);
+  const date = new Date(year, monthIndex, day);
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== monthIndex ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function toIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function shiftMonth(monthIso: string, delta: number): string {
+  const baseDate = parseIsoDate(monthIso);
+  if (!baseDate) {
+    return monthIso;
+  }
+
+  return toIsoDate(new Date(baseDate.getFullYear(), baseDate.getMonth() + delta, 1));
+}
+
+function buildCalendarDays(monthIso: string): CalendarDay[] {
+  const monthDate = parseIsoDate(monthIso);
+  if (!monthDate) {
+    return [];
+  }
+
+  const firstDayOfMonth = startOfMonth(monthDate);
+  const firstVisibleDate = new Date(firstDayOfMonth);
+  firstVisibleDate.setDate(firstVisibleDate.getDate() - firstDayOfMonth.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const current = new Date(firstVisibleDate);
+    current.setDate(firstVisibleDate.getDate() + index);
+    return {
+      iso: toIsoDate(current),
+      dayOfMonth: current.getDate(),
+      isCurrentMonth: current.getMonth() === firstDayOfMonth.getMonth(),
+    };
+  });
+}
+
+function isDateWithinRange(dateIso: string, range: DateRangeFilter): boolean {
+  if (!range.from || !range.until) {
+    return false;
+  }
+
+  return dateIso >= range.from && dateIso <= range.until;
+}
+
+function formatCalendarMonth(value: string): string {
+  const date = parseIsoDate(value);
+  if (!date) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatCalendarDayLabel(value: string): string {
+  const date = parseIsoDate(value);
+  if (!date) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
 
 function formatDateTime(value: string | null): string {
   if (!value) {
@@ -116,17 +205,28 @@ function formatValue(value: string | number | boolean | null | undefined): strin
   return String(value);
 }
 
-function formatTimelineRange(range: TimelineRange | null): string {
-  if (!range) {
+function formatDateFilterValue(value: string): string {
+  if (!value) {
     return "";
   }
 
-  const formatter = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
 
-  return `${formatter.format(new Date(range.startMs))} - ${formatter.format(new Date(range.endMs))}`;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+}
+
+function formatActiveDateRange(range: DateRangeFilter): string {
+  const { from, until } = range;
+  if (from && until) {
+    return `${formatDateFilterValue(from)} - ${formatDateFilterValue(until)}`;
+  }
+  if (from) {
+    return `Start: ${formatDateFilterValue(from)}`;
+  }
+  return "";
 }
 
 function buildSummaryItems(record: RunRecord): string[] {
@@ -183,11 +283,13 @@ function TimelineTooltip({ active, payload }: { active?: boolean; payload?: Arra
 }
 
 export default function Home(): ReactElement {
+  const todayMonth = toIsoDate(startOfMonth(new Date()));
   const [records, setRecords] = useState<RunRecord[]>([]);
   const [lookbackDays, setLookbackDays] = useState(DEFAULT_HISTORY_LOOKBACK_DAYS);
   const [lookbackInput, setLookbackInput] = useState(String(DEFAULT_HISTORY_LOOKBACK_DAYS));
-  const [activeTimelineRange, setActiveTimelineRange] = useState<TimelineRange | null>(null);
-  const [brushRange, setBrushRange] = useState<BrushRange | null>(null);
+  const [dateRange, setDateRange] = useState<DateRangeFilter>({ from: "", until: "" });
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [visibleMonth, setVisibleMonth] = useState(todayMonth);
   const [selectedService, setSelectedService] = useState(ALL_FILTER_VALUE);
   const [selectedResult, setSelectedResult] = useState(ALL_FILTER_VALUE);
   const [runQuery, setRunQuery] = useState("");
@@ -206,24 +308,9 @@ export default function Home(): ReactElement {
       .then((response) => response.json())
       .then((payload: HistoryResponse) => {
         setRecords(payload.records || []);
-        setActiveTimelineRange(null);
       })
       .catch(() => setError("Failed to load run history."));
   }, [lookbackDays]);
-
-  const timelineData = useMemo(() => buildTimelineData(records), [records]);
-
-  useEffect(() => {
-    if (!timelineData.length) {
-      setBrushRange(null);
-      return;
-    }
-
-    setBrushRange({
-      startIndex: 0,
-      endIndex: timelineData.length - 1,
-    });
-  }, [timelineData]);
 
   const services = useMemo(
     () => [...new Set(records.map((record) => record.service).filter(Boolean))].sort(),
@@ -234,14 +321,9 @@ export default function Home(): ReactElement {
     [records],
   );
 
-  const timelineFilteredRecords = useMemo(
-    () => filterRecordsByTimelineRange(records, activeTimelineRange),
-    [activeTimelineRange, records],
-  );
-
-  const filtered = useMemo(() => {
+  const baseFilteredRecords = useMemo(() => {
     const query = runQuery.trim().toLowerCase();
-    return timelineFilteredRecords.filter((record) => {
+    const matchesNonDateFilters = records.filter((record) => {
       if (selectedService !== ALL_FILTER_VALUE && record.service !== selectedService) {
         return false;
       }
@@ -253,7 +335,36 @@ export default function Home(): ReactElement {
       }
       return true;
     });
-  }, [runQuery, selectedResult, selectedService, timelineFilteredRecords]);
+    return filterRecordsByDateRange(matchesNonDateFilters, dateRange);
+  }, [dateRange, records, runQuery, selectedResult, selectedService]);
+
+  const timelineData = useMemo(() => buildTimelineData(baseFilteredRecords), [baseFilteredRecords]);
+  const timelineLabelsByRunId = useMemo(() => {
+    return new Map(timelineData.map((entry) => [entry.runId, entry.startedAtLabel]));
+  }, [timelineData]);
+  const filtered = baseFilteredRecords;
+  const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
+  const defaultVisibleMonth = useMemo(() => {
+    const latestEntry = timelineData[timelineData.length - 1];
+    if (!latestEntry) {
+      return todayMonth;
+    }
+
+    const latestDate = parseIsoDate(latestEntry.startedAt.slice(0, 10));
+    return latestDate ? toIsoDate(startOfMonth(latestDate)) : todayMonth;
+  }, [timelineData, todayMonth]);
+
+  useEffect(() => {
+    if (dateRange.from) {
+      setVisibleMonth(toIsoDate(startOfMonth(parseIsoDate(dateRange.from) ?? new Date())));
+    }
+  }, [dateRange.from]);
+
+  useEffect(() => {
+    if (!dateRange.from && !isDatePickerOpen) {
+      setVisibleMonth(defaultVisibleMonth);
+    }
+  }, [dateRange.from, defaultVisibleMonth, isDatePickerOpen]);
 
   useEffect(() => {
     if (!selectedRunId) {
@@ -303,40 +414,33 @@ export default function Home(): ReactElement {
       });
   }, [selected]);
 
-  const handleBrushChange = (next: { startIndex?: number; endIndex?: number } | null): void => {
-    if (!next || !timelineData.length) {
-      return;
-    }
-
-    const startIndex = next.startIndex ?? 0;
-    const endIndex = next.endIndex ?? timelineData.length - 1;
-    setBrushRange({ startIndex, endIndex });
-
-    if (isFullTimelineRange(timelineData, startIndex, endIndex)) {
-      setActiveTimelineRange(null);
-      return;
-    }
-
-    setActiveTimelineRange(deriveTimelineRangeFromIndexes(timelineData, startIndex, endIndex));
-  };
-
-  const resetTimelineRange = (): void => {
-    if (!timelineData.length) {
-      return;
-    }
-
-    setBrushRange({
-      startIndex: 0,
-      endIndex: timelineData.length - 1,
-    });
-    setActiveTimelineRange(null);
-  };
-
   const commitLookbackInput = (): void => {
     const normalized = normalizeLookbackInput(lookbackInput);
     setLookbackInput(String(normalized));
     setLookbackDays((current) => (current === normalized ? current : normalized));
   };
+
+  const handleDateRangeSelection = (selectedDateIso: string): void => {
+    setDateRange((current) => {
+      if (!current.from || current.until) {
+        return { from: selectedDateIso, until: "" };
+      }
+
+      if (selectedDateIso < current.from) {
+        return { from: selectedDateIso, until: current.from };
+      }
+
+      return { from: current.from, until: selectedDateIso };
+    });
+  };
+
+  const clearDateRange = (): void => {
+    setDateRange({ from: "", until: "" });
+    setVisibleMonth(todayMonth);
+  };
+
+  const hasCompletedDateRange = Boolean(dateRange.from && dateRange.until);
+  const dateRangeButtonLabel = dateRange.from ? formatActiveDateRange(dateRange) : "Select date range";
 
   const handleLoadFullLog = (): void => {
     if (!selected || !isTruncated || isLoadingFullLog || isFullLogLoaded) {
@@ -429,17 +533,107 @@ export default function Home(): ReactElement {
               placeholder="Search run ID"
             />
           </label>
+
+          <div className="filter-field filter-date-range">
+            <span>Date range</span>
+            <div className="date-range-picker">
+              <button
+                type="button"
+                className={`date-range-trigger${isDatePickerOpen ? " open" : ""}`}
+                aria-expanded={isDatePickerOpen}
+                aria-haspopup="dialog"
+                aria-label="Date range"
+                onClick={() =>
+                  setIsDatePickerOpen((current) => {
+                    if (!current && !dateRange.from) {
+                      setVisibleMonth(defaultVisibleMonth);
+                    }
+                    return !current;
+                  })
+                }
+              >
+                <span>{dateRangeButtonLabel}</span>
+              </button>
+              {isDatePickerOpen ? (
+                <div className="date-range-popover" role="dialog" aria-label="Date range picker">
+                  <div className="date-range-popover-header">
+                    <button
+                      type="button"
+                      className="date-nav-button"
+                      aria-label="Previous month"
+                      onClick={() => setVisibleMonth((current) => shiftMonth(current, -1))}
+                    >
+                      Prev
+                    </button>
+                    <strong>{formatCalendarMonth(visibleMonth)}</strong>
+                    <button
+                      type="button"
+                      className="date-nav-button"
+                      aria-label="Next month"
+                      onClick={() => setVisibleMonth((current) => shiftMonth(current, 1))}
+                    >
+                      Next
+                    </button>
+                  </div>
+                  <p className="date-range-guidance">
+                    {dateRange.from && !dateRange.until ? "Select the end date." : "Select the start date."}
+                  </p>
+                  <div className="date-grid-weekdays" aria-hidden="true">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((weekday) => (
+                      <span key={weekday}>{weekday}</span>
+                    ))}
+                  </div>
+                  <div className="date-grid">
+                    {calendarDays.map((day) => {
+                      const isStart = day.iso === dateRange.from;
+                      const isEnd = day.iso === dateRange.until;
+                      const isInRange = isDateWithinRange(day.iso, dateRange);
+                      const className = [
+                        "date-cell",
+                        day.isCurrentMonth ? "" : "outside-month",
+                        isInRange ? "in-range" : "",
+                        isStart ? "range-start" : "",
+                        isEnd ? "range-end" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ");
+
+                      return (
+                        <button
+                          key={day.iso}
+                          type="button"
+                          className={className}
+                          aria-label={`Choose ${formatCalendarDayLabel(day.iso)}`}
+                          onClick={() => handleDateRangeSelection(day.iso)}
+                        >
+                          {day.dayOfMonth}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="date-range-popover-actions">
+                    <button type="button" className="date-picker-action" onClick={clearDateRange}>
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      className="date-picker-action primary"
+                      onClick={() => setIsDatePickerOpen(false)}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
         </section>
       </header>
 
       {error ? <p className="banner-error">{error}</p> : null}
 
       <section className="timeline-panel" aria-label="Run timeline">
-        <div className="timeline-panel-header">
-          <div>
-            <h2>Run Timeline</h2>
-            <p>Run start time on the X-axis and execution time on the Y-axis across the loaded history window.</p>
-          </div>
+        <div className="timeline-status-row">
           <div className="timeline-legend">
             {services.map((service) => (
               <span key={service} className="timeline-legend-item">
@@ -448,31 +642,27 @@ export default function Home(): ReactElement {
               </span>
             ))}
           </div>
-        </div>
-
-        <div className="timeline-status-row">
-          <span className={`timeline-range-chip${activeTimelineRange ? " active" : ""}`}>
-            {activeTimelineRange ? `Selected range: ${formatTimelineRange(activeTimelineRange)}` : "Showing full loaded window"}
+          <span className={`timeline-range-chip${dateRange.from || dateRange.until ? " active" : ""}`}>
+            {dateRange.from
+              ? hasCompletedDateRange
+                ? `Filtered dates: ${formatActiveDateRange(dateRange)}`
+                : `Date range start selected: ${formatDateFilterValue(dateRange.from)}`
+              : "Showing full loaded window"}
           </span>
-          <button
-            type="button"
-            className="timeline-reset-button"
-            onClick={resetTimelineRange}
-            disabled={!activeTimelineRange}
-          >
-            Reset range
-          </button>
         </div>
 
         <div className="timeline-chart-shell">
           {timelineData.length ? (
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart
-                data={timelineData}
-                margin={{ top: 8, right: 12, left: 0, bottom: 12 }}
-              >
+              <BarChart data={timelineData} margin={{ top: 8, right: 12, left: 0, bottom: 12 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(188, 199, 214, 0.5)" />
-                <XAxis dataKey="startedAtLabel" minTickGap={24} tickLine={false} axisLine={false} />
+                <XAxis
+                  dataKey="runId"
+                  minTickGap={24}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value: string) => timelineLabelsByRunId.get(value) ?? value}
+                />
                 <YAxis
                   width={48}
                   tickLine={false}
@@ -494,16 +684,6 @@ export default function Home(): ReactElement {
                     <Cell key={entry.runId} fill={entry.color} />
                   ))}
                 </Bar>
-                {brushRange ? (
-                  <Brush
-                    dataKey="startedAtLabel"
-                    height={24}
-                    startIndex={brushRange.startIndex}
-                    endIndex={brushRange.endIndex}
-                    travellerWidth={8}
-                    onChange={handleBrushChange}
-                  />
-                ) : null}
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -531,6 +711,7 @@ export default function Home(): ReactElement {
                     key={record.run_id}
                     type="button"
                     className={`run-card${isSelected ? " selected" : ""}`}
+                    aria-label={`Run record ${record.run_id}`}
                     onClick={() => setSelectedRunId(record.run_id)}
                   >
                     <div className="run-card-topline">
