@@ -348,11 +348,10 @@ select {
 }
 
 .workspace {
-  min-height: 0;
-  flex: 1;
   display: grid;
   grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
   gap: 16px;
+  align-items: start;
 }
 
 .run-list-pane,
@@ -365,6 +364,10 @@ select {
   background: rgba(255, 255, 255, 0.92);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.run-list-pane {
+  height: 1000px;
 }
 
 .pane-header,
@@ -381,13 +384,10 @@ select {
   background: rgba(248, 250, 252, 0.9);
 }
 
-.run-list-scroll,
-.detail-scroll {
+.run-list-scroll {
   min-height: 0;
   overflow-y: auto;
-}
-
-.run-list-scroll {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -626,6 +626,7 @@ select {
   }
 
   .run-list-pane {
+    height: auto;
     max-height: 46vh;
   }
 

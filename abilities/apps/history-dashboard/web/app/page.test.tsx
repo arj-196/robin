@@ -13,26 +13,36 @@ vi.mock("recharts", () => {
   const XAxis = () => null;
   const YAxis = () => null;
   const Tooltip = () => null;
-  const Cell = () => null;
+  const Cell = ({ children }: { children?: ReactNode }) => <>{children}</>;
 
   const Bar = ({
     chartData = [],
     onClick,
+    children,
   }: {
     chartData?: Array<{ runId: string }>;
     onClick?: (data: { payload: { runId: string } }, index: number, event: MouseEvent) => void;
+    children?: ReactNode;
   }) => (
     <div>
-      {chartData.map((entry, index) => (
-        <button
-          key={entry.runId}
-          type="button"
-          aria-label={`timeline bar ${entry.runId}`}
-          onClick={(event) => onClick?.({ payload: entry }, index, event.nativeEvent)}
-        >
-          {entry.runId}
-        </button>
-      ))}
+      {chartData.map((entry, index) => {
+        const cell = Children.toArray(children)[index];
+        const cellProps = isValidElement(cell) ? (cell.props as Record<string, unknown>) : {};
+        return (
+          <button
+            key={entry.runId}
+            type="button"
+            aria-label={`timeline bar ${entry.runId}`}
+            className={typeof cellProps.className === "string" ? cellProps.className : ""}
+            data-fill={typeof cellProps.fill === "string" ? cellProps.fill : ""}
+            data-fill-opacity={typeof cellProps.fillOpacity === "number" ? String(cellProps.fillOpacity) : ""}
+            data-stroke={typeof cellProps.stroke === "string" ? cellProps.stroke : ""}
+            onClick={(event) => onClick?.({ payload: entry }, index, event.nativeEvent)}
+          >
+            {entry.runId}
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -129,6 +139,8 @@ const RECORDS: RunRecord[] = [
 ];
 
 const fetchMock = vi.fn<(input: string) => Promise<{ ok: boolean; json: () => Promise<unknown>; text: () => Promise<string> }>>();
+const scrollIntoViewMock = vi.fn();
+const scrollToMock = vi.fn();
 
 function renderHome(): void {
   render(<Home />);
@@ -149,6 +161,17 @@ function chooseCalendarDay(label: string): void {
 }
 
 beforeEach(() => {
+  scrollIntoViewMock.mockReset();
+  scrollToMock.mockReset();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoViewMock,
+  });
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    value: scrollToMock,
+  });
+
   fetchMock.mockImplementation(async (input: string) => {
     if (input.startsWith("/api/history")) {
       return {
@@ -187,7 +210,23 @@ afterEach(() => {
 });
 
 describe("history dashboard timeline interactions", () => {
-  it("keeps single click behavior for selecting a run", async () => {
+  it("syncs timeline bar styling when selecting a run from the list", async () => {
+    renderHome();
+    await waitForHistoryLoad();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run record chores-1" }));
+
+    await waitFor(() => {
+      const selectedBar = screen.getByRole("button", { name: "timeline bar chores-1" });
+      const unselectedBar = screen.getByRole("button", { name: "timeline bar chores-2" });
+      expect(selectedBar.className).toContain("selected");
+      expect(selectedBar.getAttribute("data-fill")).toBe("#d97706");
+      expect(unselectedBar.className).not.toContain("selected");
+      expect(unselectedBar.getAttribute("data-fill-opacity")).toBe("0.5");
+    });
+  });
+
+  it("keeps single click behavior for selecting a run from the timeline and top-aligns it in the run list", async () => {
     renderHome();
     await waitForHistoryLoad();
 
@@ -198,7 +237,22 @@ describe("history dashboard timeline interactions", () => {
       expect(screen.getByRole("button", { name: "Run record chores-1" })).toBeTruthy();
       expect(screen.getByText("/tmp/chores-1.log")).toBeTruthy();
     });
+    expect(scrollToMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        top: expect.any(Number),
+        behavior: "smooth",
+      }),
+    );
     expect(screen.getByText("Showing full loaded window")).toBeTruthy();
+  });
+
+  it("keeps the run list independently scrollable", async () => {
+    renderHome();
+    await waitForHistoryLoad();
+
+    const listContainer = document.querySelector(".run-list-scroll");
+    expect(listContainer).toBeTruthy();
+    expect(listContainer?.className).toContain("run-list-scroll");
   });
 
   it("keeps the full dataset visible until the end date is selected", async () => {

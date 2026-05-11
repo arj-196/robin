@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import {
@@ -301,6 +301,8 @@ export default function Home(): ReactElement {
   const [isLoadingFullLog, setIsLoadingFullLog] = useState(false);
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const runListScrollRef = useRef<HTMLDivElement>(null);
+  const runCardRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     setError("");
@@ -342,7 +344,19 @@ export default function Home(): ReactElement {
   const timelineLabelsByRunId = useMemo(() => {
     return new Map(timelineData.map((entry) => [entry.runId, entry.startedAtLabel]));
   }, [timelineData]);
-  const filtered = baseFilteredRecords;
+  const filtered = useMemo(() => {
+    return [...baseFilteredRecords].sort((left, right) => {
+      const leftTs = Date.parse(left.started_at);
+      const rightTs = Date.parse(right.started_at);
+      const leftSafeTs = Number.isFinite(leftTs) ? leftTs : Number.NEGATIVE_INFINITY;
+      const rightSafeTs = Number.isFinite(rightTs) ? rightTs : Number.NEGATIVE_INFINITY;
+      if (leftSafeTs !== rightSafeTs) {
+        return rightSafeTs - leftSafeTs;
+      }
+
+      return right.run_id.localeCompare(left.run_id);
+    });
+  }, [baseFilteredRecords]);
   const calendarDays = useMemo(() => buildCalendarDays(visibleMonth), [visibleMonth]);
   const defaultVisibleMonth = useMemo(() => {
     const latestEntry = timelineData[timelineData.length - 1];
@@ -374,6 +388,24 @@ export default function Home(): ReactElement {
       setSelectedRunId("");
     }
   }, [filtered, selectedRunId]);
+
+  useEffect(() => {
+    if (!selectedRunId) {
+      return;
+    }
+
+    const selectedCard = runCardRefs.current.get(selectedRunId);
+    const runListContainer = runListScrollRef.current;
+    if (!selectedCard || !runListContainer) {
+      return;
+    }
+
+    const containerRect = runListContainer.getBoundingClientRect();
+    const selectedRect = selectedCard.getBoundingClientRect();
+    const selectedTopWithinContainer = selectedRect.top - containerRect.top;
+    const targetScrollTop = runListContainer.scrollTop + selectedTopWithinContainer;
+    runListContainer.scrollTo({ top: Math.max(0, targetScrollTop), behavior: "smooth" });
+  }, [selectedRunId]);
 
   const selected = filtered.find((record) => record.run_id === selectedRunId) || null;
   const selectedMetadata = selected ? Object.entries(selected.metadata) : [];
@@ -680,9 +712,19 @@ export default function Home(): ReactElement {
                     }
                   }}
                 >
-                  {timelineData.map((entry) => (
-                    <Cell key={entry.runId} fill={entry.color} />
-                  ))}
+                  {timelineData.map((entry) => {
+                    const isSelected = entry.runId === selectedRunId;
+                    return (
+                      <Cell
+                        key={entry.runId}
+                        className={`timeline-bar-cell${isSelected ? " selected" : ""}`}
+                        fill={entry.color}
+                        fillOpacity={isSelected ? 1 : 0.5}
+                        stroke={isSelected ? entry.color : "none"}
+                        strokeWidth={isSelected ? 2 : 0}
+                      />
+                    );
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -702,13 +744,21 @@ export default function Home(): ReactElement {
             <p>{filtered.length} shown</p>
           </div>
 
-          <div className="run-list-scroll">
+          <div ref={runListScrollRef} className="run-list-scroll">
             {filtered.length ? (
               filtered.map((record) => {
                 const isSelected = record.run_id === selectedRunId;
                 return (
                   <button
                     key={record.run_id}
+                    ref={(node) => {
+                      if (node) {
+                        runCardRefs.current.set(record.run_id, node);
+                        return;
+                      }
+
+                      runCardRefs.current.delete(record.run_id);
+                    }}
                     type="button"
                     className={`run-card${isSelected ? " selected" : ""}`}
                     aria-label={`Run record ${record.run_id}`}
