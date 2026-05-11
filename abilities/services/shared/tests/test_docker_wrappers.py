@@ -149,6 +149,24 @@ exit 0
         self.assertNotIn("--publish", log)
         self.assertNotIn("/var/run/docker.sock", log)
 
+    def test_history_dashboard_dev_mounts_workspace_rw_and_runs_next_dev(self) -> None:
+        result = self.run_with_fake_docker(
+            "history-dashboard",
+            ["dev"],
+            "ROBIN_HOME={tmp}/robin-home\nHISTORY_DASHBOARD_PORT=4242\n",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = result.docker_log  # type: ignore[attr-defined]
+        self.assertIn("robin-history-dashboard bash -lc", log)
+        self.assertIn("next dev --hostname 0.0.0.0 --port \"$PORT\"", log)
+        self.assertIn("--env NODE_ENV=development", log)
+        self.assertIn("--env WATCHPACK_POLLING=true", log)
+        self.assertIn("--publish 4242:4242", log)
+        self.assertIn(":/workspace:rw", log)
+        self.assertIn("robin-history-dashboard-node-modules", log)
+        self.assertIn(":/robin-home:ro", log)
+
 
 if __name__ == "__main__":
     unittest.main()

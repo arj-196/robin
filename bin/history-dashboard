@@ -14,6 +14,7 @@ Modes:
   build     Build the Docker image
   status    Print health payload JSON
   serve     Start production Next.js dashboard in Docker
+  dev       Start Next.js dev server in Docker with hot reload
   help      Show this help
 
 Serve options:
@@ -87,10 +88,10 @@ run_docker() {
     help|--help|-h)
       usage
       ;;
-    build|status|serve)
+    build|status|serve|dev)
       load_env
 
-      if [[ "$mode" == "serve" ]]; then
+      if [[ "$mode" == "serve" || "$mode" == "dev" ]]; then
         local passthrough_args=()
         while (($#)); do
           case "$1" in
@@ -138,7 +139,7 @@ run_docker() {
         --rm
         --init
       )
-      if [[ "$mode" == "serve" ]]; then
+      if [[ "$mode" == "serve" || "$mode" == "dev" ]]; then
         docker_args+=(--publish "$port:$port")
         if ((background)); then
           docker_args+=(
@@ -147,20 +148,51 @@ run_docker() {
           )
         fi
       fi
-      docker_args+=(
-        --volume "$host_robin_home:$CANONICAL_ROBIN_HOME:ro"
-        --workdir "$CANONICAL_REPO/abilities/apps/history-dashboard/web"
-      )
+      if [[ "$mode" == "dev" ]]; then
+        docker_args+=(
+          --volume "$ROOT:$CANONICAL_REPO:rw"
+          --volume "robin-history-dashboard-node-modules:$CANONICAL_REPO/abilities/apps/history-dashboard/web/node_modules"
+          --volume "$host_robin_home:$CANONICAL_ROBIN_HOME:ro"
+          --workdir "$CANONICAL_REPO/abilities/apps/history-dashboard/web"
+        )
+      else
+        docker_args+=(
+          --volume "$host_robin_home:$CANONICAL_ROBIN_HOME:ro"
+          --workdir "$CANONICAL_REPO/abilities/apps/history-dashboard/web"
+        )
+      fi
       append_env_file_vars docker_args
       docker_args+=(
         --env "ROBIN_HOME=$CANONICAL_ROBIN_HOME"
         --env "PORT=$port"
       )
+      if [[ "$mode" == "dev" ]]; then
+        docker_args+=(
+          --env "NODE_ENV=development"
+          --env "WATCHPACK_POLLING=true"
+        )
+      fi
 
       if [[ "$mode" == "status" ]]; then
         exec docker "${docker_args[@]}" \
           "$image" \
           node /usr/local/bin/history-dashboard-status.js
+      fi
+
+      if [[ "$mode" == "dev" ]]; then
+        local dev_cmd='if [ ! -f node_modules/.package-lock.json ]; then npm ci; fi; ./node_modules/.bin/next dev --hostname 0.0.0.0 --port "$PORT"'
+        if ((background)); then
+          docker "${docker_args[@]}" \
+            "$image" \
+            bash -lc "$dev_cmd"
+          echo "History dashboard dev server is running in the background on http://localhost:$port"
+          echo "Stop it with: docker stop robin-history-dashboard"
+          return
+        fi
+
+        exec docker "${docker_args[@]}" \
+          "$image" \
+          bash -lc "$dev_cmd"
       fi
 
       if ((background)); then

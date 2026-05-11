@@ -48,6 +48,7 @@ Use the checked-in shims directly:
 ./bin/history-dashboard help
 ./bin/history-dashboard serve
 ./bin/history-dashboard serve --background
+./bin/history-dashboard dev
 ```
 
 These app and service shims use Docker by default. The first run builds the
@@ -66,6 +67,7 @@ chores status
 chores history
 history-dashboard status
 history-dashboard serve --background
+history-dashboard dev
 ```
 
 ## Metadata
