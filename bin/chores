@@ -65,6 +65,17 @@ ensure_image() {
     "$ROOT"
 }
 
+build_image() {
+  local image="robin-chores"
+  local dockerfile="$ROOT/abilities/services/chores/Dockerfile"
+  docker build \
+    --build-arg "CODEX_VERSION=$CODEX_VERSION" \
+    "$@" \
+    -t "$image" \
+    -f "$dockerfile" \
+    "$ROOT"
+}
+
 run_docker() {
   load_env
 
@@ -147,6 +158,13 @@ if [[ "${1:-}" == "install-cron" ]]; then
     esac
   done
   printf '%s cd %s && %s/bin/chores run\n' "$schedule" "$ROOT" "$ROOT"
+  exit
+fi
+
+if [[ "${1:-}" == "build" ]]; then
+  shift
+  load_env
+  build_image "$@"
   exit
 fi
 
